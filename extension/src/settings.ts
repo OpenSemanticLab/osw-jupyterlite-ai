@@ -11,9 +11,10 @@
  * keeps it. That is deliberate; if a deployment ever needs to *force* a provider, this is
  * the wrong mechanism and the provider registry has to refuse the others.
  *
- * A consequence worth knowing before it bites: once this has written a value, later
- * changes on the wiki do not reach that browser. `SETTINGS_VERSION` is the escape hatch -
- * raise it and every browser takes the new defaults once more.
+ * The one entry this module owns is re-asserted on every start, so changing the model or
+ * the proxy url on the wiki reaches browsers that have already used the sandbox. Anything
+ * else in the settings - providers the user added, which one they made default - is left
+ * alone.
  */
 
 import { ISettingRegistry } from '@jupyterlab/settingregistry';
@@ -22,21 +23,6 @@ import { apiGet } from './wiki';
 
 /** Jupyternaut's settings plugin. Moves between releases; pinned here deliberately. */
 export const SETTINGS_MODEL = '@jupyternaut/persona:settings-model';
-
-/**
- * Bump to re-apply defaults in browsers that already took an older set.
- *
- * 2: the first version left useSecretsManager on, so the token in settings was ignored
- *    and the agent never initialised. Browsers that took version 1 need the rest of the
- *    entry rewritten, not just the flag.
- *
- * Without this, a deployment that changes its model is invisible to exactly the users who
- * have used the sandbox before - the ones most likely to notice and least likely to think
- * to reset their settings.
- */
-export const SETTINGS_VERSION = 2;
-
-const VERSION_KEY = 'osw-jupyternaut:applied-settings-version';
 
 export interface IWikiAgentConfig {
   /** Provider id understood by Jupyternaut, e.g. 'generic' for an OpenAI-compatible API. */
@@ -105,46 +91,22 @@ export async function applyWikiDefaults(
 
   const settings = await registry.load(SETTINGS_MODEL);
 
-  // The marker lives in localStorage rather than in the settings registry because the
-  // registry validates against Jupyternaut's schema and rejects keys it does not declare.
-  // Same browser, same origin, same lifetime as the user settings it guards.
-  const appliedVersion = Number(window.localStorage.getItem(VERSION_KEY) ?? 0);
-
-  // Before anything else, including the early return below. Jupyternaut reads a
-  // provider's apiKey from jupyter-secrets-manager while this is on - which it is by
-  // default - so the token written into settings is ignored, the model is never built,
-  // and the chat reports "configure your AI settings first" even though the provider is
-  // plainly listed in the picker. It is an invariant for this provider to work at all,
-  // not a user preference, so it is re-asserted on every start rather than once.
+  // Jupyternaut reads a provider's apiKey from jupyter-secrets-manager while this is on -
+  // which it is by default - so the token written into settings is ignored, the model is
+  // never built, and the chat reports "configure your AI settings first" even though the
+  // provider is plainly listed in the picker.
   if (settings.get('useSecretsManager').composite !== false) {
     await settings.set('useSecretsManager', false as any);
     console.info('osw-jupyternaut: disabled the secrets manager so the wiki token is used');
   }
 
-  const providers = (settings.get('providers').composite as any[]) ?? [];
-  const existing = providers.find(entry => entry?.id === PROVIDER_ID);
-
   // The wiki mints a short-lived token identifying this user; the proxy named by baseURL
-  // verifies it and adds the real vendor key on the far side. No key is ever sent to the
-  // browser, which is what makes a static site safe to configure this way.
+  // verifies it and adds the real vendor key on the far side. No key reaches the browser,
+  // which is what makes a static site safe to configure this way.
   const token = await fetchAgentToken();
 
-  // Refreshed on every start, even when everything else has already been applied: the
-  // token expires (twelve hours by default) and settings persist in the browser, so a
-  // stored one goes stale and the user would meet an opaque 401 on their next visit.
-  if (existing && appliedVersion >= SETTINGS_VERSION) {
-    if (token && existing.apiKey !== token) {
-      await settings.set(
-        'providers',
-        providers.map(p =>
-          p?.id === PROVIDER_ID ? { ...p, apiKey: token } : p
-        ) as any
-      );
-      console.info('osw-jupyternaut: refreshed the agent token');
-    }
-    // The rest of the entry is left alone - the user may have edited it, and theirs wins.
-    return;
-  }
+  const providers = (settings.get('providers').composite as any[]) ?? [];
+  const existing = providers.find(entry => entry?.id === PROVIDER_ID);
 
   const entry = {
     id: PROVIDER_ID,
@@ -158,31 +120,50 @@ export async function applyWikiDefaults(
     ...(config.parameters ? { parameters: config.parameters } : {})
   };
 
-  const next = existing
-    ? providers.map(p => (p?.id === PROVIDER_ID ? { ...p, ...entry } : p))
-    : [...providers, entry];
+  // This entry belongs to the wiki, and is re-asserted on every start rather than
+  // written once.
+  //
+  // It used to be written once and then left alone, guarded by a version marker in
+  // localStorage, on the reasoning that a user may have edited it and their choice
+  // should win. That was wrong twice over: a browser that had taken an earlier version
+  // kept a stale baseURL and a stale token and simply stopped working, and the only way
+  // out was for the user to find and clear a setting they never set. Changing the model
+  // on the wiki has to reach people who have already used the sandbox - they are exactly
+  // the people who will notice.
+  //
+  // What a user *does* keep: providers they added themselves, and their choice of
+  // default. Only this one entry is owned here.
+  const unchanged =
+    existing && Object.entries(entry).every(([k, v]) => (existing as any)[k] === v);
 
-  await settings.set('providers', next as any);
-
-  // Only steer the default when the user has not chosen one. Overwriting a deliberate
-  // choice on every page load would be the most annoying possible behaviour.
-  const currentDefault = settings.get('defaultProvider').composite as string;
-  if (!currentDefault || (existing && currentDefault === PROVIDER_ID)) {
-    await settings.set('defaultProvider', PROVIDER_ID as any);
+  if (!unchanged) {
+    const next = existing
+      ? providers.map(p => (p?.id === PROVIDER_ID ? { ...p, ...entry } : p))
+      : [...providers, entry];
+    await settings.set('providers', next as any);
   }
 
-  window.localStorage.setItem(VERSION_KEY, String(SETTINGS_VERSION));
+  // Only steer the default when the user has not chosen one, or already has ours.
+  // Overwriting a deliberate choice on every page load would be the most annoying
+  // possible behaviour.
+  const currentDefault = settings.get('defaultProvider').composite as string;
+  if (!currentDefault || currentDefault === PROVIDER_ID) {
+    if (currentDefault !== PROVIDER_ID) {
+      await settings.set('defaultProvider', PROVIDER_ID as any);
+    }
+  }
 
-  // Everything that decides whether the agent can start, in one line. When a user
-  // reports "configure your AI settings first" this says which part is missing without
-  // asking them to go digging in a settings panel.
+  // Everything that decides whether the agent can start, in one line. When a user reports
+  // "configure your AI settings first" this says which part is missing without asking
+  // them to go digging in a settings panel.
   console.info(
     `osw-jupyternaut: applied the wiki's agent defaults (${config.provider}/${config.model})`,
     {
       baseURL: config.baseURL ?? '(none)',
       token: token ? 'present' : 'MISSING - the wiki issued none',
       secretsManager: settings.get('useSecretsManager').composite,
-      defaultProvider: settings.get('defaultProvider').composite
+      defaultProvider: settings.get('defaultProvider').composite,
+      changed: !unchanged
     }
   );
 }

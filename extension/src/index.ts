@@ -7,11 +7,17 @@ import { ISkillRegistry } from '@jupyternaut/agent';
 
 import { bridge } from './bridge';
 import { sanitizeLocation } from './from-url';
-import { applyWikiDefaults, fetchWikiConfig, requireApproval } from './settings';
+import {
+  SETTINGS_MODEL,
+  applyWikiDefaults,
+  fetchWikiConfig,
+  requireApproval
+} from './settings';
 import { listSkills, registerWikiSkills, saveSkill } from './skills';
 import { currentUser } from './wiki';
 
 export const SAVE_SKILL_COMMAND = 'osw-jupyternaut:save-skill';
+export const DESCRIBE_COMMAND = 'osw-jupyternaut:describe';
 export const REFRESH_SKILLS_COMMAND = 'osw-jupyternaut:refresh-skills';
 
 /**
@@ -46,7 +52,7 @@ const wikiConfig: JupyterFrontEndPlugin<void> = {
   description: "Apply the wiki's default agent configuration",
   autoStart: true,
   optional: [ISettingRegistry],
-  activate: async (_app: JupyterFrontEnd, settingRegistry: ISettingRegistry | null) => {
+  activate: async (app: JupyterFrontEnd, settingRegistry: ISettingRegistry | null) => {
     const user = await currentUser();
     if (user) {
       console.info(`osw-jupyternaut: the wiki sees you as ${user}`);
@@ -67,6 +73,39 @@ const wikiConfig: JupyterFrontEndPlugin<void> = {
     } catch (reason) {
       console.warn('osw-jupyternaut: could not mark save-skill as needing approval', reason);
     }
+
+    // Everything that decides whether the agent can start, readable from one place.
+    //
+    // Not only for tests: JupyterLite persists user settings to IndexedDB through a
+    // connector that `serviceManager.settings.fetch` does not read, so there is no way
+    // to see the *resolved* configuration from outside the application. Without this, a
+    // user reporting "configure your AI settings first" can only be asked to describe a
+    // settings panel. The base project ships the same thing for the same reason.
+    app.commands.addCommand(DESCRIBE_COMMAND, {
+      label: 'Describe the OSW agent configuration',
+      caption:
+        'The resolved provider, model, proxy url and token state the agent will use.',
+      execute: async () => {
+        const settings = await settingRegistry.load(SETTINGS_MODEL);
+        const providers = (settings.get('providers').composite as any[]) ?? [];
+        const entry = providers.find(p => p?.id === 'osw');
+        return {
+          useSecretsManager: settings.get('useSecretsManager').composite,
+          defaultProvider: settings.get('defaultProvider').composite,
+          provider: entry
+            ? {
+                id: entry.id,
+                provider: entry.provider,
+                model: entry.model,
+                baseURL: entry.baseURL,
+                // Never the token itself - this is pasted into bug reports.
+                apiKey: entry.apiKey ? 'present' : 'missing'
+              }
+            : null,
+          providerCount: providers.length
+        };
+      }
+    });
 
     const config = await fetchWikiConfig();
     if (!config?.settings) {

@@ -22,6 +22,8 @@ exist".
 | `same_origin_session.py` | the kernel's requests carry the wiki origin's cookies. Needs `fixtures/probe.php` deployed. |
 | `osw_in_kernel.py` | osw-python imports and builds a `WtSite`; reports the cold start. |
 | `cookie_control.py` | a control, not a test: shows that Playwright cannot observe Cookie headers. |
+| `quiet_start.py` | the starter cells produce no stderr, so a working cell does not look like a failed one. |
+| `live_chat.py` | the agent's resolved configuration, and a real call through the real proxy to the real model. |
 | `run_cell.py` | a debugging tool: run one cell in the deployed sandbox and print the output. |
 
 ## fixtures/probe.php
@@ -41,3 +43,41 @@ rm <wiki>/mediawiki/extensions/JupyterLite/probe.php
 
 It reports cookie *names* only, never values, but it is still an undocumented endpoint on
 the wiki's origin and does not belong in a deployment.
+
+## live_chat.py, and why it needs a token
+
+This is the test that would have caught the three bugs a settings test missed:
+`useSecretsManager` swallowing the token, a `baseURL` without the `/v1` the AI SDK
+depends on, and a CORS allow-list that rejected headers the SDK sends.
+
+It needs a **signed** wiki token, and the reason is worth understanding rather than
+working around. The proxy authenticates before it forwards, so an unsigned token is
+rejected with 401 whatever the url is - a 401 therefore proves nothing about the path. A
+wrong `baseURL` only shows up as a 404 *from the vendor*, which means the request has to
+get that far.
+
+Mint one inside the proxy container, where the shared secret already lives, and hand the
+test the file. The token is short-lived and scoped; the secret never leaves the container
+and the token never needs to be read by a human:
+
+```bash
+docker cp tests/fixtures/mint_token.py osw-llm-proxy:/tmp/mint.py
+docker exec osw-llm-proxy sh -c 'cd /app && uv run --no-sync python /tmp/mint.py /tmp/t'
+docker cp osw-llm-proxy:/tmp/t /tmp/livetoken
+
+docker run --rm --network host -v "$PWD":/w -v /tmp/livetoken:/tmp/livetoken:ro -w /w \
+    mcr.microsoft.com/playwright/python:v1.49.0-jammy sh -c \
+    "pip install -q 'playwright==1.49.0'; python tests/live_chat.py \
+        --wiki wiki-dev.open-semantic-lab.org \
+        --proxy https://llm.osw-chatbot.demo.open-semantic-lab.org/v1 \
+        --token-file /tmp/livetoken"
+
+rm -f /tmp/livetoken
+```
+
+Without `--token-file` it still runs and still checks the settings and CORS, but it says
+so in its own output rather than claiming more than it verified.
+
+It has been checked against a deliberately broken url - dropping the `/v1` makes it fail
+with exactly the diagnosis above - because a regression test nobody has seen fail is a
+regression test nobody should trust.

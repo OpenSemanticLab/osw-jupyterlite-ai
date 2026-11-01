@@ -34,7 +34,7 @@ STUB_CONFIG = {
             "provider": "anthropic",
             "model": "claude-sonnet-5",
             "name": "OSW (stub)",
-            "baseURL": "https://proxy.invalid",
+            "baseURL": "https://proxy.invalid/v1",
         },
     }
 }
