@@ -160,6 +160,15 @@ def main() -> int:
     if any(good in m for m in refused):
         failures.append("the allowed img_auth.php url was refused - the guard is too strict")
 
+    # The flag, specifically. It was once set after an early return, so a browser that
+    # had already taken the defaults never got it - the provider showed in the picker and
+    # the agent still refused to start, which is a confusing pair of symptoms.
+    if not any("disabled the secrets manager" in m for m in ours):
+        failures.append(
+            "useSecretsManager was not turned off; Jupyternaut would read the apiKey "
+            "from the secrets manager and ignore the wiki token"
+        )
+
     if not any("applied the wiki's agent defaults (anthropic/claude-sonnet-5)" in m for m in ours):
         failures.append(
             "the stubbed wiki agent defaults were not applied; "

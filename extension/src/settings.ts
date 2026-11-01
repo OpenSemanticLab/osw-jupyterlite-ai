@@ -26,11 +26,15 @@ export const SETTINGS_MODEL = '@jupyternaut/persona:settings-model';
 /**
  * Bump to re-apply defaults in browsers that already took an older set.
  *
+ * 2: the first version left useSecretsManager on, so the token in settings was ignored
+ *    and the agent never initialised. Browsers that took version 1 need the rest of the
+ *    entry rewritten, not just the flag.
+ *
  * Without this, a deployment that changes its model is invisible to exactly the users who
  * have used the sandbox before - the ones most likely to notice and least likely to think
  * to reset their settings.
  */
-export const SETTINGS_VERSION = 1;
+export const SETTINGS_VERSION = 2;
 
 const VERSION_KEY = 'osw-jupyternaut:applied-settings-version';
 
@@ -106,6 +110,17 @@ export async function applyWikiDefaults(
   // Same browser, same origin, same lifetime as the user settings it guards.
   const appliedVersion = Number(window.localStorage.getItem(VERSION_KEY) ?? 0);
 
+  // Before anything else, including the early return below. Jupyternaut reads a
+  // provider's apiKey from jupyter-secrets-manager while this is on - which it is by
+  // default - so the token written into settings is ignored, the model is never built,
+  // and the chat reports "configure your AI settings first" even though the provider is
+  // plainly listed in the picker. It is an invariant for this provider to work at all,
+  // not a user preference, so it is re-asserted on every start rather than once.
+  if (settings.get('useSecretsManager').composite !== false) {
+    await settings.set('useSecretsManager', false as any);
+    console.info('osw-jupyternaut: disabled the secrets manager so the wiki token is used');
+  }
+
   const providers = (settings.get('providers').composite as any[]) ?? [];
   const existing = providers.find(entry => entry?.id === PROVIDER_ID);
 
@@ -129,15 +144,6 @@ export async function applyWikiDefaults(
     }
     // The rest of the entry is left alone - the user may have edited it, and theirs wins.
     return;
-  }
-
-  // Jupyternaut reads a provider's apiKey from jupyter-secrets-manager when this is on,
-  // which it is by default - so a key written into settings is simply ignored and the
-  // agent reports "configure your AI settings first". Turning it off is right here: what
-  // we store is not a vendor key but a short-lived wiki token, scoped to this user and
-  // already readable by any script on this origin. The vendor key never leaves the proxy.
-  if (settings.get('useSecretsManager').composite !== false) {
-    await settings.set('useSecretsManager', false as any);
   }
 
   const entry = {
@@ -167,8 +173,17 @@ export async function applyWikiDefaults(
 
   window.localStorage.setItem(VERSION_KEY, String(SETTINGS_VERSION));
 
+  // Everything that decides whether the agent can start, in one line. When a user
+  // reports "configure your AI settings first" this says which part is missing without
+  // asking them to go digging in a settings panel.
   console.info(
-    `osw-jupyternaut: applied the wiki's agent defaults (${config.provider}/${config.model})`
+    `osw-jupyternaut: applied the wiki's agent defaults (${config.provider}/${config.model})`,
+    {
+      baseURL: config.baseURL ?? '(none)',
+      token: token ? 'present' : 'MISSING - the wiki issued none',
+      secretsManager: settings.get('useSecretsManager').composite,
+      defaultProvider: settings.get('defaultProvider').composite
+    }
   );
 }
 
