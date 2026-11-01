@@ -1,0 +1,23 @@
+# The OSW flavour of oold-jupyterlite-ai.
+#
+# Paths resolve against this file. Anything not set here comes from the base package, so
+# this lists only what OSW actually changes.
+
+[site]
+contents = ["contents"]
+apps = ["lab"]
+
+[agent]
+# `documents` and `git` are deliberately absent. They pull python-docx, python-pptx,
+# pypdf, xlsxwriter and the GitHub client into a wheel set every user downloads in their
+# browser, and OSW's subject is typed wiki data, not office files or repositories. Add
+# them back here if that stops being true - the brief and the wheel set follow together.
+capabilities = ["validation", "tabular", "rdf"]
+framing = "brief/framing.md"
+closing = "brief/closing.md"
+skills = "skills"
+
+[wheels]
+# Fully resolved; Site._build_wheels downloads it with --no-deps. Regenerate with
+# scripts/resolve_wheels.py, which also fails on a version conflict in the closure.
+requirements = "piplite-requirements.txt"
