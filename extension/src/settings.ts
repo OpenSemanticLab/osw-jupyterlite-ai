@@ -131,6 +131,15 @@ export async function applyWikiDefaults(
     return;
   }
 
+  // Jupyternaut reads a provider's apiKey from jupyter-secrets-manager when this is on,
+  // which it is by default - so a key written into settings is simply ignored and the
+  // agent reports "configure your AI settings first". Turning it off is right here: what
+  // we store is not a vendor key but a short-lived wiki token, scoped to this user and
+  // already readable by any script on this origin. The vendor key never leaves the proxy.
+  if (settings.get('useSecretsManager').composite !== false) {
+    await settings.set('useSecretsManager', false as any);
+  }
+
   const entry = {
     id: PROVIDER_ID,
     name: config.name ?? 'OSW',

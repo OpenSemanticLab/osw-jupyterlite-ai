@@ -49,6 +49,39 @@ STEPS: tuple[str, ...] = (
 )
 
 
+
+def _quieten() -> None:
+    """Keep library chatter out of the notebook.
+
+    Jupyter paints anything on stderr red, so a cell that merely *worked* looks like it
+    failed. Everything silenced here is noise a sandbox user can do nothing about:
+
+    * osw's own INFO banner, which explains how to turn itself off;
+    * the ``osw[wikitext]`` hint - mwparserfromhell ships no pure-python wheel and is
+      absent from this Pyodide, so the extra genuinely cannot be installed here;
+    * pydantic V1 deprecation warnings raised while oold and opensemantic define their
+      models, which are about those libraries' internals, not the user's code.
+
+    Deliberately narrow: filters are scoped to those modules and that category, so a
+    DeprecationWarning from the user's own code still shows. Real errors are untouched.
+    """
+    import logging
+    import warnings
+
+    logging.getLogger("osw").setLevel(logging.WARNING)
+    logging.getLogger("osw.wiki_tools").setLevel(logging.ERROR)
+    # The Pyodide kernel's own warning, raised whenever a cell uses top-level await -
+    # which the setup cell does. It fires while the kernel decides how to run the cell,
+    # before any of its code executes, so a filter set inside that cell is too late for
+    # it. Installing this at *import* time is what lets the notebook's first cell be a
+    # plain `import osw_bootstrap` and the awaiting cell come after it, quiet.
+    warnings.filterwarnings(
+        "ignore", message=".*should_run_async.*", category=DeprecationWarning
+    )
+    for module in (r"oold\..*", r"opensemantic.*", r"osw\..*"):
+        warnings.filterwarnings("ignore", category=DeprecationWarning, module=module)
+
+
 async def setup(verbose: bool = True) -> None:
     """Install the stack and route `requests` through the browser.
 
@@ -76,6 +109,26 @@ async def setup(verbose: bool = True) -> None:
     import pyodide_http
 
     pyodide_http.patch_all()
+
+    # Imported here, under the filters, rather than left to the user's next cell. The
+    # model registration this triggers prints a page of library chatter exactly once;
+    # doing it inside the step the user already knows is slow keeps it out of the cell
+    # where they are trying to read their own output.
+    import contextlib
+    import io
+
+    sink = io.StringIO()
+    with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+        import osw  # noqa: F401
+        import osw.core  # noqa: F401
+        import osw.wtsite  # noqa: F401
+
+    # Again, because importing osw configures logging and resets the warning filters -
+    # its own banner says as much ("Configuring logging yourself ... takes the output
+    # over automatically"). Without this the filters installed at import time are gone by
+    # the time the *next* cell runs, and the kernel's await warning reappears there,
+    # under whichever cell the user happens to run next.
+    _quieten()
 
     if verbose:
         print("ready - osw-python can now reach this wiki as the logged-in user")
@@ -119,4 +172,19 @@ def wtsite(domain: str | None = None):
                 "browser - the sandbox uses that session - and re-run this cell."
             ) from error
         raise
-    return WtSite(WtSite.WtSiteLegacyConfig(site=site))
+
+    # WtSiteLegacyConfig warns that WtSiteConfig is preferred, but WtSiteConfig is the
+    # credential path - it takes an iri and a CredentialManager and would prompt. Passing
+    # an already-built mwclient.Site is only possible through the legacy config, so the
+    # warning is expected here and would only confuse someone reading their cell output.
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", DeprecationWarning)
+        return WtSite(WtSite.WtSiteLegacyConfig(site=site))
+
+
+# Run on import, not on setup(): see the should_run_async note in _quieten(). It also
+# means a user who only imports this module gets the quiet behaviour without having to
+# know it exists.
+_quieten()
