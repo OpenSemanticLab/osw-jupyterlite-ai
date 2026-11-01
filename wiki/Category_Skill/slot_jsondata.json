@@ -1,0 +1,36 @@
+{
+  "type": [
+    "Category:Category"
+  ],
+  "subclass_of": [
+    "Category:OSW494f660e6a714a1a9681c517bbb975da"
+  ],
+  "utf8_icon": [
+    "🛠"
+  ],
+  "uuid": "c4358938-e1f5-4d8d-a084-c028dfb8c22f",
+  "name": "Skill",
+  "label": [
+    {
+      "text": "Skill",
+      "lang": "en"
+    },
+    {
+      "text": "Fähigkeit",
+      "lang": "de"
+    }
+  ],
+  "description": [
+    {
+      "text": "Instructions an AI assistant reads before a task it matches, authored and versioned on the wiki",
+      "lang": "en"
+    },
+    {
+      "text": "Anleitung, die ein KI-Assistent vor einer passenden Aufgabe liest, hier im Wiki gepflegt",
+      "lang": "de"
+    }
+  ],
+  "instance_rdf_type": [
+    "schema:HowTo"
+  ]
+}

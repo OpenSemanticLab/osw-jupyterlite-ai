@@ -1,0 +1,80 @@
+{
+  "@context": [
+    "/wiki/Category:OSW494f660e6a714a1a9681c517bbb975da?action=raw&slot=jsonschema",
+    {
+      "skill_name": {
+        "@id": "Property:HasSkillName"
+      },
+      "applies_to": {
+        "@id": "Property:HasSkillAppliesTo"
+      },
+      "resources": {
+        "@id": "Property:HasSkillResource",
+        "@type": "@id"
+      }
+    }
+  ],
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "/wiki/Category:OSW494f660e6a714a1a9681c517bbb975da?action=raw&slot=jsonschema"
+    }
+  ],
+  "title": "Skill",
+  "title*": {
+    "de": "Fähigkeit",
+    "en": "Skill"
+  },
+  "description": "Instructions an AI assistant reads before a task it matches, authored and versioned on the wiki",
+  "description*": {
+    "de": "Anleitung, die ein KI-Assistent vor einer passenden Aufgabe liest, hier im Wiki gepflegt",
+    "en": "Instructions an AI assistant reads before a task it matches, authored and versioned on the wiki"
+  },
+  "properties": {
+    "skill_name": {
+      "type": "string",
+      "title": "Skill name",
+      "title*": {
+        "de": "Name der Fähigkeit"
+      },
+      "description": "Short slug the assistant calls this skill by, e.g. 'osl-page-editing'. Lower case, hyphens, no spaces - it is an identifier, not a label.",
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "applies_to": {
+      "type": "array",
+      "title": "Applies to",
+      "title*": {
+        "de": "Gilt für"
+      },
+      "description": "Assistants this skill is meant for. Empty means all of them.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "osw-chatbot",
+          "jupyternaut"
+        ]
+      }
+    },
+    "resources": {
+      "type": "array",
+      "title": "Resources",
+      "title*": {
+        "de": "Ressourcen"
+      },
+      "description": "Files the instructions refer to. Named here rather than inlined so the assistant can list them cheaply and fetch only what it needs.",
+      "items": {
+        "type": "string",
+        "title": "File",
+        "format": "autocomplete",
+        "options": {
+          "autocomplete": {
+            "category": "Category:OSW11a53cdfbdc24524bf8ac435cbf65d9d"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "skill_name"
+  ]
+}

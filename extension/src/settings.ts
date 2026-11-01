@@ -124,3 +124,23 @@ export async function applyWikiDefaults(
     `osw-jupyternaut: applied the wiki's agent defaults (${config.provider}/${config.model})`
   );
 }
+
+/**
+ * Make sure a command is on the agent's approval list.
+ *
+ * The agent checks `commandsRequiringApproval` before running a command, so this is what
+ * puts a human in front of an action the model would otherwise take on its own. Added
+ * rather than replaced: the defaults cover the notebook execution commands and dropping
+ * them to add ours would quietly widen what the agent may do unattended.
+ */
+export async function requireApproval(
+  registry: ISettingRegistry,
+  command: string
+): Promise<void> {
+  const settings = await registry.load(SETTINGS_MODEL);
+  const current = (settings.get('commandsRequiringApproval').composite as string[]) ?? [];
+  if (current.includes(command)) {
+    return;
+  }
+  await settings.set('commandsRequiringApproval', [...current, command] as any);
+}

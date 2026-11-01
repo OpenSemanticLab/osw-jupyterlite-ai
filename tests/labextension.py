@@ -25,7 +25,7 @@ from playwright.sync_api import sync_playwright
 
 EVIL = "https://example.invalid/evil.ipynb"
 
-STUB = {
+STUB_CONFIG = {
     "jupyterliteconfig": {
         "basePath": "/w/extensions/JupyterLite/dist/",
         "settings": {
@@ -34,6 +34,40 @@ STUB = {
             "name": "OSW (stub)",
             "baseURL": "https://proxy.invalid/llm/v1",
         },
+    }
+}
+
+SKILL_TITLE = "Item:OSWstubskill0000000000000000000"
+
+# One member of Category:Skill, and the two slots the registration reads. Stubbed because
+# the category does not exist on every wiki yet, and because osw-dev denies anonymous API
+# reads - an unstubbed anonymous run could only ever observe the plugin giving up.
+STUB_MEMBERS = {"query": {"categorymembers": [{"title": SKILL_TITLE}]}}
+STUB_REVISIONS = {
+    "query": {
+        "pages": [
+            {
+                "title": SKILL_TITLE,
+                "revisions": [
+                    {
+                        "slots": {
+                            "jsondata": {
+                                "content": json.dumps(
+                                    {
+                                        "skill_name": "stub-skill",
+                                        "description": [
+                                            {"text": "A stub skill", "lang": "en"}
+                                        ],
+                                        "resources": [],
+                                    }
+                                )
+                            },
+                            "main": {"content": "# Stub\n\nInstructions."},
+                        }
+                    }
+                ],
+            }
+        ]
     }
 }
 
@@ -60,16 +94,18 @@ def main() -> int:
         context.add_init_script(
             f"""
             (() => {{
-              const stub = {json.dumps(STUB)};
+              const config = {json.dumps(STUB_CONFIG)};
+              const members = {json.dumps(STUB_MEMBERS)};
+              const revisions = {json.dumps(STUB_REVISIONS)};
+              const json = (body) => new Response(JSON.stringify(body), {{
+                status: 200, headers: {{ 'Content-Type': 'application/json' }}
+              }});
               const real = window.fetch;
               window.fetch = async (input, init) => {{
                 const href = typeof input === 'string' ? input : (input.url ?? String(input));
-                if (href.includes('action=jupyterliteconfig')) {{
-                  return new Response(JSON.stringify(stub), {{
-                    status: 200,
-                    headers: {{ 'Content-Type': 'application/json' }}
-                  }});
-                }}
+                if (href.includes('action=jupyterliteconfig')) return json(config);
+                if (href.includes('list=categorymembers')) return json(members);
+                if (href.includes('prop=revisions')) return json(revisions);
                 return real(input, init);
               }};
             }})();
@@ -90,6 +126,22 @@ def main() -> int:
         )
         page.wait_for_selector(".jp-LabShell, .jp-Notebook", timeout=args.timeout * 1000)
         page.wait_for_timeout(6000)
+
+        # Registered commands are what makes the skill tools reachable by the agent:
+        # Jupyternaut offers the model whatever `discover_commands` finds, so a command
+        # that is not there is a capability the agent simply does not have.
+        commands = page.evaluate(
+            """() => {
+                const app = window.jupyterapp ?? window.jupyterlab;
+                const names = ['osw-jupyternaut:save-skill',
+                               'osw-jupyternaut:refresh-skills',
+                               'osw-jupyternaut:list-skills'];
+                const out = {};
+                for (const n of names) out[n] = app ? app.commands.hasCommand(n) : false;
+                return out;
+            }"""
+        )
+        print(f"commands: {json.dumps(commands)}")
         browser.close()
 
     ours = [m for m in messages if "osw-jupyternaut" in m]
@@ -111,6 +163,13 @@ def main() -> int:
             "the stubbed wiki agent defaults were not applied; "
             f"saw: {[m.splitlines()[0][:90] for m in ours]}"
         )
+
+    if not any("registered 1 wiki skill" in m for m in ours):
+        failures.append("the stubbed Category:Skill page was not registered as a skill")
+
+    missing = [name for name, present in commands.items() if not present]
+    if missing:
+        failures.append(f"commands not registered: {missing}")
 
     if failures:
         print("\nFAIL:", file=sys.stderr)
