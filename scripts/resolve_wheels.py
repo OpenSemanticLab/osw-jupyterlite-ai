@@ -46,6 +46,10 @@ OSW_SEEDS = (
     "osw",
     "opensemantic-lab",
     "pyodide-http",
+    # osw asks for pydantic[email]; micropip resolves no extras, so email-validator is
+    # never pulled in by the dependency walk and has to be named. contents/
+    # osw_bootstrap.py installs it explicitly for the same reason.
+    "email-validator",
 )
 
 #: Resolved before anything else, so a name with several requirers lands on a version
@@ -59,6 +63,12 @@ OSW_SEEDS = (
 PINS = (
     "datamodel-code-generator==0.51.0",
     "isort<8",
+    # Reached through opensemantic.characteristics.quantitative, which
+    # opensemantic-lab requires. 0.7.2 and later want pandas>=3.0 and packaging>=26.0;
+    # the Python 3.13 Pyodide this flavour is pinned to ships pandas 2.3.3 and packaging
+    # 24.2, and both are compiled or vendored by the distribution, so neither can be
+    # upgraded from here. 0.7.1 asks only for pandas>=2.2 and fits.
+    "pint-pandas==0.7.1",
 )
 
 #: Declared by osw but unusable in the browser, and excluded rather than vendored.

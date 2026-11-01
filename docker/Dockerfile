@@ -16,12 +16,18 @@ RUN apt-get update \
 
 # Installed from git: neither oold-jupyterlite-ai nor oold-azure-providers is on PyPI.
 # Pinned to a commit rather than main so a rebuild is reproducible - bump deliberately.
+#
+# The constraints file is what keeps the kernel on a Python 3.13 Pyodide. The base's
+# [build] extra asks for jupyterlite-core and -pyodide-kernel unpinned, which resolves to
+# 0.8.x and a Python 3.14 kernel that osw cannot run in. Read docker/constraints.txt
+# before relaxing anything here.
+COPY docker/constraints.txt /tmp/constraints.txt
 ARG OOLD_LITE_REF=main
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir -c /tmp/constraints.txt \
     "oold-jupyterlite-ai[build] @ git+https://github.com/OO-LD/oold-jupyterlite-ai@${OOLD_LITE_REF}"
 
 # jupyterlab-open-url-parameter is what implements ?fromURL=, not JupyterLite core.
 # It restores the URL contract the retired extensions/JupyterLite/dist/ site used.
-RUN pip install --no-cache-dir jupyterlab-open-url-parameter
+RUN pip install --no-cache-dir -c /tmp/constraints.txt jupyterlab-open-url-parameter
 
 WORKDIR /flavour

@@ -12,7 +12,12 @@ apps = ["lab"]
 # pypdf, xlsxwriter and the GitHub client into a wheel set every user downloads in their
 # browser, and OSW's subject is typed wiki data, not office files or repositories. Add
 # them back here if that stops being true - the brief and the wheel set follow together.
-capabilities = ["validation", "tabular", "rdf"]
+#
+# `validation` is absent for a harder reason: it requires jsonschema>=4.25, and the
+# Python 3.13 Pyodide this flavour is pinned to ships 4.23.0 as a distribution package
+# that cannot be upgraded from the site. OSW validates against the wiki's own category
+# schemas through osw-python anyway, which is the thing users here actually want.
+capabilities = ["tabular", "rdf"]
 framing = "brief/framing.md"
 closing = "brief/closing.md"
 skills = "skills"
