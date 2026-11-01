@@ -5,6 +5,7 @@ import {
 import { ISettingRegistry } from '@jupyterlab/settingregistry';
 import { ISkillRegistry } from '@jupyternaut/agent';
 
+import { bridge } from './bridge';
 import { sanitizeLocation } from './from-url';
 import { applyWikiDefaults, fetchWikiConfig, requireApproval } from './settings';
 import { listSkills, registerWikiSkills, saveSkill } from './skills';
@@ -155,4 +156,4 @@ const wikiSkills: JupyterFrontEndPlugin<void> = {
   }
 };
 
-export default [fromUrlGuard, wikiConfig, wikiSkills];
+export default [fromUrlGuard, wikiConfig, wikiSkills, bridge];
