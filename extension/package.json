@@ -1,0 +1,39 @@
+{
+  "name": "osw-jupyternaut",
+  "version": "0.1.0",
+  "description": "Wires the in-browser Jupyternaut agent to the OpenSemanticLab wiki it is served from",
+  "keywords": ["jupyter", "jupyterlab", "jupyterlab-extension", "jupyterlite", "opensemanticlab"],
+  "license": "Apache-2.0",
+  "private": true,
+  "main": "lib/index.js",
+  "types": "lib/index.d.ts",
+  "files": ["lib/**/*.{d.ts,js,js.map}"],
+  "scripts": {
+    "build": "npm run build:lib && npm run build:labextension",
+    "build:lib": "tsc",
+    "build:labextension": "jupyter-builder build .",
+    "clean": "rimraf lib labextension tsconfig.tsbuildinfo"
+  },
+  "dependencies": {
+    "@jupyterlab/application": "^4.5.0",
+    "@jupyterlab/coreutils": "^6.5.0",
+    "@jupyterlab/settingregistry": "^4.5.0",
+    "@jupyternaut/agent": "^0.20.1",
+    "@lumino/coreutils": "^2.2.0"
+  },
+  "devDependencies": {
+    "@jupyter/builder": "^1.2.2",
+    "rimraf": "^5.0.1",
+    "typescript": "~5.8.0"
+  },
+  "jupyterlab": {
+    "extension": true,
+    "outputDir": "labextension",
+    "sharedPackages": {
+      "@jupyternaut/agent": {
+        "bundled": false,
+        "singleton": true
+      }
+    }
+  }
+}

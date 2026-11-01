@@ -1,0 +1,34 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "osw-jupyternaut"
+version = "0.1.0"
+description = "Wires the in-browser Jupyternaut agent to the OpenSemanticLab wiki it is served from"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.9"
+classifiers = [
+  "Framework :: Jupyter",
+  "Framework :: Jupyter :: JupyterLab",
+  "Framework :: Jupyter :: JupyterLab :: 4",
+  "Framework :: Jupyter :: JupyterLab :: Extensions",
+  "Framework :: Jupyter :: JupyterLab :: Extensions :: Prebuilt",
+]
+dependencies = ["jupyterlite-ai>=0.20.1,<0.21"]
+
+# No build hook, for the same reason the base project gives: `npm run build` shells out to
+# `jupyter-builder`, a console script from a Python package in the build environment, and
+# pip's subprocess does not inherit it. labextension/ is built explicitly before the
+# install - oold_jupyterlite_ai.site._build_extension does that - and pip only copies the
+# result into shared-data.
+[tool.hatch.build.targets.wheel]
+packages = ["osw_jupyternaut"]
+
+[tool.hatch.build.targets.wheel.shared-data]
+"labextension" = "share/jupyter/labextensions/osw-jupyternaut"
+"install.json" = "share/jupyter/labextensions/osw-jupyternaut/install.json"
+
+[tool.hatch.build.targets.sdist]
+include = ["osw_jupyternaut", "labextension", "install.json", "src", "package.json", "tsconfig.json", "README.md"]

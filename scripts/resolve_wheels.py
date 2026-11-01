@@ -29,11 +29,36 @@ from oold_jupyterlite_ai.wheels import (
     agent_seeds,
     bundled_wheels,
     normalize,
-    pip_download,
     pyodide_packages,
     runtime_requires,
     wheel_metadata,
 )
+
+
+def pip_download(python: str, requirement: str, dest: Path, python_version: str) -> list[Path]:
+    """Like the base's helper, but asks for the Python the kernel actually runs.
+
+    The base hardcodes 3.14, which was right while it targeted a Pyodide 314 kernel. This
+    flavour is pinned to a 3.13 Pyodide (see docker/constraints.txt), and the difference
+    is not cosmetic: osw declares requires-python <3.14, so resolving against 3.14 skips
+    it silently and falls back to an ancient release that happens to have no upper bound.
+    That is exactly how this flavour first ended up resolving osw 1.1.2.
+    """
+    before = set(dest.glob("*.whl"))
+    subprocess.run(
+        [
+            python, "-m", "pip", "download", requirement,
+            "--dest", str(dest),
+            "--no-deps",
+            "--only-binary=:all:",
+            "--platform", "any",
+            "--python-version", python_version,
+            "--implementation", "py",
+            "--quiet",
+        ],
+        check=True,
+    )
+    return sorted(set(dest.glob("*.whl")) - before)
 
 #: What this flavour adds on top of the base agent's own requirements.
 #:
@@ -80,8 +105,20 @@ PINS = (
 EXCLUDED = {"dask"}
 
 
+def pyodide_python(pyodide_version: str, cache: Path) -> str:
+    """The `major.minor` the kernel runs, read from the lock rather than assumed."""
+    import json
+
+    pyodide_packages(pyodide_version, cache)  # ensures the lock is cached
+    lock = json.loads(
+        (Path(cache) / f"pyodide-lock-{pyodide_version}.json").read_text(encoding="utf-8")
+    )
+    return ".".join(lock["info"]["python"].split(".")[:2])
+
+
 def resolve(pyodide_version: str, cache: Path, bundled: list[str], capabilities: list[str] | None):
     in_pyodide = pyodide_packages(pyodide_version, cache)
+    python_version = pyodide_python(pyodide_version, cache)
     prebundled = bundled_wheels(bundled)
 
     queue: list[tuple[str, str]] = [
@@ -130,7 +167,7 @@ def resolve(pyodide_version: str, cache: Path, bundled: list[str], capabilities:
                 from_pyodide[key] = in_pyodide[key]
                 continue
             try:
-                wheels = pip_download(sys.executable, requirement, dest)
+                wheels = pip_download(sys.executable, requirement, dest, python_version)
             except subprocess.CalledProcessError:
                 print(f"no pure-python wheel for {requirement}", file=sys.stderr)
                 raise SystemExit(1) from None

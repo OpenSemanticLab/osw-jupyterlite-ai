@@ -1,0 +1,5 @@
+{
+  "packageManager": "python",
+  "packageName": "osw-jupyternaut",
+  "uninstallInstructions": "Use pip to uninstall the package: pip uninstall osw-jupyternaut"
+}

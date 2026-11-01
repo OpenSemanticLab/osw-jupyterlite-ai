@@ -26,3 +26,11 @@ skills = "skills"
 # Fully resolved; Site._build_wheels downloads it with --no-deps. Regenerate with
 # scripts/resolve_wheels.py, which also fails on a version conflict in the closure.
 requirements = "piplite-requirements.txt"
+
+[extension]
+# scripts/build.sh does the npm build and the pip install itself, in the same
+# container run as the site build. Site._build_extension skips the install whenever
+# the bundle looks newer than src/, which in an ephemeral container means the
+# extension is silently absent from the site - so it is told not to try.
+path = "extension"
+rebuild = "never"
