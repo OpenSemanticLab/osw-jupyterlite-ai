@@ -52,6 +52,28 @@ export interface IWikiConfigResponse {
   settings?: IWikiAgentConfig;
 }
 
+/**
+ * A short-lived token identifying this user to the LLM proxy.
+ *
+ * Minted by the Chatbot extension's `action=chatbottoken`: HMAC-signed with the wiki's
+ * shared secret, carrying the username, an expiry and the action list. Reused rather than
+ * invented - the proxy already verifies exactly this, and a second token format would be
+ * a second thing to get wrong.
+ *
+ * Null when the wiki issues none: the extension may be absent, the secret unset, or the
+ * reader may lack `chatbot-use`. The agent then has no working provider, which is the
+ * correct outcome and shows up as a 401 rather than as silence.
+ */
+export async function fetchAgentToken(): Promise<string | null> {
+  try {
+    const body = await apiGet({ action: 'chatbottoken' });
+    return body?.chatbottoken?.token ?? null;
+  } catch (reason) {
+    console.info('osw-jupyternaut: the wiki issued no agent token', reason);
+    return null;
+  }
+}
+
 /** Ask the wiki what it wants. Returns null when the module is absent or we may not use it. */
 export async function fetchWikiConfig(): Promise<IWikiConfigResponse | null> {
   try {
@@ -87,8 +109,25 @@ export async function applyWikiDefaults(
   const providers = (settings.get('providers').composite as any[]) ?? [];
   const existing = providers.find(entry => entry?.id === PROVIDER_ID);
 
+  // The wiki mints a short-lived token identifying this user; the proxy named by baseURL
+  // verifies it and adds the real vendor key on the far side. No key is ever sent to the
+  // browser, which is what makes a static site safe to configure this way.
+  const token = await fetchAgentToken();
+
+  // Refreshed on every start, even when everything else has already been applied: the
+  // token expires (twelve hours by default) and settings persist in the browser, so a
+  // stored one goes stale and the user would meet an opaque 401 on their next visit.
   if (existing && appliedVersion >= SETTINGS_VERSION) {
-    // Applied already, and the user may have edited it since; theirs wins.
+    if (token && existing.apiKey !== token) {
+      await settings.set(
+        'providers',
+        providers.map(p =>
+          p?.id === PROVIDER_ID ? { ...p, apiKey: token } : p
+        ) as any
+      );
+      console.info('osw-jupyternaut: refreshed the agent token');
+    }
+    // The rest of the entry is left alone - the user may have edited it, and theirs wins.
     return;
   }
 
@@ -97,10 +136,9 @@ export async function applyWikiDefaults(
     name: config.name ?? 'OSW',
     provider: config.provider,
     model: config.model,
-    // The AI SDK rejects an empty key for some providers even when the endpoint needs
-    // none. The proxy named by baseURL authenticates by the wiki session and ignores
-    // this, and no real key is ever sent to the browser.
-    apiKey: 'wiki-session',
+    // A placeholder when the wiki issues no token: the AI SDK refuses an empty key, and
+    // failing at the provider with a clear 401 beats failing here with a config error.
+    apiKey: token ?? 'no-wiki-token',
     ...(config.baseURL ? { baseURL: config.baseURL } : {}),
     ...(config.parameters ? { parameters: config.parameters } : {})
   };
