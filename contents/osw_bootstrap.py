@@ -52,15 +52,23 @@ STEPS: tuple[str, ...] = (
 async def setup(verbose: bool = True) -> None:
     """Install the stack and route `requests` through the browser.
 
-    Safe to call more than once: micropip skips what is already present, and
-    ``patch_all`` is idempotent.
+    Safe to call more than once: already-present packages are skipped, and ``patch_all``
+    is idempotent.
+
+    Uses ``piplite``, not ``micropip``, and the difference is not cosmetic. piplite knows
+    the site's own wheel index; micropip does not, and resolves against pypi.org instead.
+    That matters here because this site ships a *patched* osw carrying the same version
+    number as the released one - so with micropip the released copy wins, dragging back
+    the dask dependency the patch removes and making a cold start depend on the network.
+    The site also sets ``disablePyPIFallback``, so this now fails loudly rather than
+    quietly fetching the wrong thing.
     """
-    import micropip
+    import piplite
 
     for step in STEPS:
         if verbose:
             print(f"installing {step} ...")
-        await micropip.install(step, keep_going=True)
+        await piplite.install(step, keep_going=True)
 
     # After the installs, not before: patching is cheap but doing it here keeps the whole
     # "make the kernel able to talk to the wiki" story in one call. Pyodide has no
@@ -84,11 +92,31 @@ def wtsite(domain: str | None = None):
 
     Everything done through the returned object happens **as the logged-in user** and
     cannot exceed their rights.
+
+    Note the absence of ``do_init=False``, which osw's own ``WtSite`` passes. osw gets
+    away with it because it calls ``site.login()`` straight afterwards and mwclient's
+    ``login()`` runs ``site_init()`` as a side effect. There is no login on this path, so
+    skipping the init would leave ``site.rights`` empty - and ``Page.can('read')`` tests
+    membership of exactly that list, so **every** ``page.text()`` would raise
+    ``InsufficientPermission``. osw's retry loop then swallows it five times and returns
+    an empty page list, which surfaces as an ``IndexError`` nowhere near the cause.
     """
     import js
     import mwclient
+    from mwclient.errors import APIError
     from osw.wtsite import WtSite
 
     domain = domain or js.location.hostname
-    site = mwclient.Site(domain, path="/w/", scheme="https", do_init=False)
+    try:
+        site = mwclient.Site(domain, path="/w/", scheme="https")
+    except APIError as error:
+        if error.code in ("readapidenied", "mustbeloggedin"):
+            # Worth catching rather than letting mwclient's error through: on a wiki that
+            # requires login this is the single most likely first failure, and "you need
+            # read permission" does not suggest the fix.
+            raise PermissionError(
+                f"{domain} does not allow anonymous access. Log in to the wiki in this "
+                "browser - the sandbox uses that session - and re-run this cell."
+            ) from error
+        raise
     return WtSite(WtSite.WtSiteLegacyConfig(site=site))

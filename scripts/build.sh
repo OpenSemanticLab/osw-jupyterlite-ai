@@ -19,6 +19,11 @@ STRIP_MAPS="${STRIP_MAPS:-1}"
 # 3.14 - pip does not error on that, it silently resolves back to osw 1.1.2.
 OSW_SRC="${OSW_SRC:-/usr/local/docker-container/.worktrees/osw-python-pyodide}"
 
+# Local version segment for the osw wheel built from OSW_SRC. Set it empty once a
+# released osw carries the dask fix - then the plain PyPI wheel is correct and this
+# whole local-build step can go.
+OSW_LOCAL_VERSION="${OSW_LOCAL_VERSION:-pyodide1}"
+
 docker image inspect "$IMAGE" >/dev/null 2>&1 || {
     echo "== building $IMAGE =="
     docker build -f "$ROOT/docker/Dockerfile" -t "$IMAGE" "$ROOT"
@@ -32,10 +37,22 @@ rm -f "$ROOT/wheels/local"/osw-*.whl
 docker run --rm \
     -v "$ROOT":/flavour \
     -v "$OSW_SRC":/osw-src:ro \
+    -e OSW_LOCAL_VERSION="$OSW_LOCAL_VERSION" \
     -w /flavour "$IMAGE" sh -c '
         pip install --quiet build
         cp -r /osw-src /tmp/osw-src
-        cd /tmp/osw-src && python -m build --wheel --outdir /flavour/wheels/local .
+        cd /tmp/osw-src
+        # Stamp a PEP 440 local version onto our build. Without it this wheel and the
+        # released one are both "2.8.2", and nothing downstream can be made to prefer
+        # ours: pip picked the index copy at vendoring time and the site silently shipped
+        # the *unpatched* osw, which still requires dask unconditionally and therefore
+        # cannot install in Pyodide at all.
+        # A local segment sorts above the plain version, so ours wins deterministically -
+        # and micropip.list()["osw"].version then says which one you actually got.
+        # Remove this once a release carries the dask fix; see OSW_LOCAL_VERSION below.
+        sed -i -E "s/^version = \"([^\"]+)\"/version = \"\1+${OSW_LOCAL_VERSION}\"/" pyproject.toml
+        grep -m1 "^version" pyproject.toml
+        python -m build --wheel --outdir /flavour/wheels/local .
     '
 
 if [ ! -d "$ROOT/extension/node_modules" ]; then

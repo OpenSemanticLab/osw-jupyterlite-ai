@@ -22,10 +22,14 @@
 #   rich 13.9.4
 #   tqdm 4.67.1
 #   typing-extensions 4.15.0
+#
+# Excluded, see EXCLUDED in scripts/resolve_wheels.py:
+#   dask
 
 annotated-doc==0.0.5
 argcomplete==3.7.2
 black==26.10.1
+comm==0.2.3
 datamodel-code-generator==0.51.0
 dnspython==2.9.1
 email-validator==2.3.0
@@ -50,7 +54,7 @@ opensemantic-characteristics-quantitative==0.8.0.post1000004005000
 opensemantic-core==0.59.0.post1000004007001
 opensemantic-lab==0.8.1.post1000002004003
 opensemantic-quantities==0.4.0.post1000002005000
-osw==2.8.2
+osw==2.8.2+pyodide1
 pathspec==1.1.1
 pint==0.26.2
 pint-pandas==0.7.1

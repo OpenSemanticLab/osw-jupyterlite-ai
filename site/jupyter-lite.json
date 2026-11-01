@@ -1,0 +1,24 @@
+{
+  "jupyter-lite-schema-version": 0,
+  "jupyter-config-data": {
+    "exposeAppInBrowser": true,
+    "litePluginSettings": {
+      "@jupyterlite/pyodide-kernel-extension:kernel": {
+        "_comment": [
+          "pypi.org stays reachable on purpose: a sandbox where a user cannot",
+          "piplite.install('something') in their own notebook is much less useful, and that is",
+          "a capability worth keeping.",
+          "It is safe to leave on because the thing it used to paper over is fixed properly:",
+          "this flavour ships a *patched* osw, and it now carries a distinct local version",
+          "(2.8.2+pyodide1), so pypi's plain 2.8.2 can never be substituted for it. Before the",
+          "stamp the two tied and the released copy won - which still requires dask",
+          "unconditionally and therefore cannot install in Pyodide at all.",
+          "The vendored index is still complete enough for a cold start without the network",
+          "(see KERNEL_SEEDS in scripts/resolve_wheels.py); the fallback is a convenience for",
+          "the user's own packages, not a dependency of the sandbox itself."
+        ],
+        "disablePyPIFallback": false
+      }
+    }
+  }
+}

@@ -6,6 +6,9 @@
 [site]
 contents = ["contents"]
 apps = ["lab"]
+# Ours rather than the base's default, to turn off piplite's pypi.org fallback.
+# See the comment inside the file for why that matters here specifically.
+lite_config = "site/jupyter-lite.json"
 
 [agent]
 # `documents` and `git` are deliberately absent. They pull python-docx, python-pptx,

@@ -24,7 +24,14 @@ from playwright.sync_api import sync_playwright
 # measure the whole thing once. `mwclient.Site` is built by hand and handed to
 # WtSiteLegacyConfig: that is the path which skips osw's credential handling entirely,
 # which is what "no credentials on the same instance" means in practice.
+# Read against a wiki that allows anonymous access and sends Access-Control-Allow-Origin,
+# because the wiki hosting the sandbox denies anonymous API reads - so an unauthenticated
+# run could never exercise the read path there. Cross-origin reads work; writes would not,
+# and are not claimed here.
+READ_WIKI = "demo.open-semantic-lab.org"
+
 CELL = """
+READ_WIKI = "{read_wiki}"
 # Through the bootstrap, not a bare micropip.install("osw"): micropip cannot resolve
 # osw's pinned datamodel-code-generator as a transitive dependency, and drops the
 # [email] extra of pydantic. osw_bootstrap exists to order around both.
@@ -34,15 +41,30 @@ await osw_bootstrap.setup(verbose=False)
 import osw, osw.core, osw.wtsite, osw.wiki_tools, osw.utils.util
 print("OSW_IMPORT ok")
 
-wtsite = osw_bootstrap.wtsite()
+wtsite = osw_bootstrap.wtsite(READ_WIKI)
 print("OSW_WTSITE ok", type(wtsite).__name__)
+
+# Actually read a page. Constructing a WtSite proves almost nothing: mwclient only
+# fetches the user's rights during site_init, and without them every page.text() raises
+# InsufficientPermission, which osw's retry loop swallows into an empty list and an
+# IndexError. An earlier version of this test asserted only construction and missed
+# exactly that.
+from osw.wtsite import WtSite
+page = wtsite.get_page(WtSite.GetPageParam(titles=["Main_Page"])).pages[0]
+print("OSW_READ ok", page.title, len(page.get_slot_content("main") or ""), "chars")
 
 import opensemantic, opensemantic.core, opensemantic.base
 print("OSW_MODELS ok")
 
+# dask is the canary for the whole vendoring story. It is not in our wheel set and not
+# in the Pyodide distribution, so the only way it can appear is piplite falling back to
+# pypi.org - which also means pypi's *unpatched* osw was installed instead of ours, and
+# that a cold start silently needs the network. Asserted, not merely reported.
+import micropip
+print("OSW_PKG osw", micropip.list()["osw"].version)
 try:
     import dask
-    print("OSW_DASK present (unexpected, but harmless)")
+    print("OSW_DASK leaked-from-pypi")
 except ImportError:
     print("OSW_DASK absent as intended")
 print("OSW_DONE")
@@ -74,7 +96,7 @@ def main() -> int:
         page.keyboard.press("Escape")
         page.keyboard.press("b")
         page.keyboard.press("Enter")
-        page.keyboard.insert_text(CELL.strip())
+        page.keyboard.insert_text(CELL.replace("{read_wiki}", READ_WIKI).strip())
 
         started = time.monotonic()
         page.keyboard.press("Shift+Enter")
@@ -94,10 +116,27 @@ def main() -> int:
         browser.close()
 
     print(f"\ncold start + full osw import: {elapsed:.1f}s")
-    print("--- cell output ---")
-    print(output.strip()[:2000])
+    # The markers, not the first 2000 characters. osw and pydantic emit enough
+    # deprecation noise to push every assertion out of a blind truncation, which once
+    # made a passing run look like a failing one.
+    print("--- assertions ---")
+    for line in output.splitlines():
+        if line.startswith("OSW_"):
+            print(f"  {line.strip()}")
+    noise = [ln for ln in output.splitlines() if "Traceback" in ln or "Error" in ln]
+    if noise:
+        print("--- errors in the cell ---")
+        for line in noise[:10]:
+            print(f"  {line.strip()[:160]}")
 
-    required = ["OSW_IMPORT ok", "OSW_WTSITE ok", "OSW_MODELS ok", "OSW_DONE"]
+    required = [
+        "OSW_IMPORT ok",
+        "OSW_WTSITE ok",
+        "OSW_READ ok",
+        "OSW_MODELS ok",
+        "OSW_DASK absent as intended",
+        "OSW_DONE",
+    ]
     missing = [marker for marker in required if marker not in output]
     if missing:
         print(f"\nFAIL: missing {missing}", file=sys.stderr)
@@ -106,7 +145,7 @@ def main() -> int:
         print("\nFAIL: the cell raised", file=sys.stderr)
         return 1
 
-    print("\nPASS: osw-python imports and builds a WtSite in the browser, no credentials.")
+    print("\nPASS: osw-python imports, builds a WtSite and reads a page - no credentials.")
     return 0
 
 

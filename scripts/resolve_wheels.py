@@ -67,6 +67,17 @@ def pip_download(python: str, requirement: str, dest: Path, python_version: str)
 #: model layer an OSW notebook wants and the brief tells the agent about.
 #: `pyodide-http` is in EXTRA_SEEDS already but repeated here so this list stands alone
 #: if the base ever drops it: without patch_all() nothing reaches the wiki at all.
+#: The kernel's own bootstrap closure, which cannot be discovered automatically.
+#:
+#: jupyterlite-pyodide-kernel ships ipykernel, piplite and pyodide-kernel as stub wheels
+#: inside its labextension, and those wheels declare **no** Requires-Dist at all - so
+#: walking them, as BUNDLED_SEEDS does, yields nothing. comm is what pyodide-kernel
+#: actually needs and this Pyodide does not carry; without it the kernel never reaches
+#: kernel_info_reply once the pypi.org fallback is off, and the symptom is a sandbox where
+#: no cell ever runs and nothing is logged. The base project hand-lists it for the same
+#: reason.
+KERNEL_SEEDS = ("comm",)
+
 OSW_SEEDS = (
     "osw",
     "opensemantic-lab",
@@ -126,6 +137,7 @@ def resolve(pyodide_version: str, cache: Path, bundled: list[str], capabilities:
         *((r, "seed") for r in BUNDLED_SEEDS),
         *((r, "seed") for r in EXTRA_SEEDS),
         *((r, "agent") for r in agent_seeds(None, capabilities)),
+        *((r, "kernel") for r in KERNEL_SEEDS),
         *((r, "osw-flavour") for r in OSW_SEEDS),
     ]
     seen: set[str] = set()
