@@ -28,11 +28,13 @@ EVIL = "https://example.invalid/evil.ipynb"
 STUB_CONFIG = {
     "jupyterliteconfig": {
         "basePath": "/w/extensions/JupyterLite/dist/",
+        # The shape a real deployment uses: Jupyternaut's built-in anthropic provider
+        # pointed at the wiki's LLM proxy, which holds the key.
         "settings": {
-            "provider": "generic",
-            "model": "stub-model",
+            "provider": "anthropic",
+            "model": "claude-sonnet-5",
             "name": "OSW (stub)",
-            "baseURL": "https://proxy.invalid/llm/v1",
+            "baseURL": "https://proxy.invalid",
         },
     }
 }
@@ -158,7 +160,7 @@ def main() -> int:
     if any(good in m for m in refused):
         failures.append("the allowed img_auth.php url was refused - the guard is too strict")
 
-    if not any("applied the wiki's agent defaults" in m for m in ours):
+    if not any("applied the wiki's agent defaults (anthropic/claude-sonnet-5)" in m for m in ours):
         failures.append(
             "the stubbed wiki agent defaults were not applied; "
             f"saw: {[m.splitlines()[0][:90] for m in ours]}"
