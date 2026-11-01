@@ -127,6 +127,44 @@ def main() -> int:
         if allow.get("empty") is not None:
             failures.append("an empty notebook argument should mean 'empty sandbox'")
 
+        # The hidden iframe: created on demand, revealed on demand, and the kernel kept
+        # alive behind it. Driven through the api rather than the chat, because what is
+        # being checked here is the page's half of the contract.
+        print("\nchecking the hidden-iframe lifecycle ...")
+        lifecycle = page.evaluate(
+            """() => {
+                const s = mw.osw.sandbox;
+                const out = {};
+                s.ensure();
+                const el = document.getElementById('osw-sandbox-panel');
+                const f = el && el.querySelector('iframe');
+                out.createdHidden = !!el && el.classList.contains('osw-sandbox-hidden');
+                out.pointsAtLab = !!f && (f.getAttribute('src') || '').includes('lab/index.html');
+                s.show();
+                out.visibleAfterShow = s.isVisible();
+                s.hide();
+                out.hiddenAfterHide = !s.isVisible();
+                // Still there after hiding - that is the point, the kernel keeps running.
+                out.framePersists = !!document.querySelector('#osw-sandbox-frame');
+                out.poppedOut = s.isPoppedOut();
+                return out;
+            }"""
+        )
+        print(f"  {json.dumps(lifecycle)}")
+        if not lifecycle.get("createdHidden"):
+            failures.append("ensure() did not create the sandbox hidden")
+        if not lifecycle.get("pointsAtLab"):
+            failures.append("the sandbox iframe does not point at the lab")
+        if not lifecycle.get("visibleAfterShow"):
+            failures.append("show() did not reveal the sandbox")
+        if not lifecycle.get("hiddenAfterHide"):
+            failures.append("hide() did not hide the sandbox")
+        if not lifecycle.get("framePersists"):
+            failures.append(
+                "hiding removed the iframe - the kernel would die and the cold start "
+                "would be paid again on the next reveal"
+            )
+
         browser.close()
 
     if failures:

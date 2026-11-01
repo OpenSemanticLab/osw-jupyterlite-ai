@@ -63,6 +63,23 @@ async function createNotebook(
   return { notebookPath, cells: cells.length };
 }
 
+async function openUrl(app: JupyterFrontEnd, url: string): Promise<any> {
+  if (!url) {
+    return { error: 'no url given' };
+  }
+  // Same rule as the launcher and the ?fromURL= guard: only this wiki's own uploaded
+  // files. A notebook opened here runs with the reader's rights.
+  const parsed = new URL(url, window.location.href);
+  const allowed =
+    parsed.origin === window.location.origin &&
+    parsed.pathname.includes('/img_auth.php/');
+  if (!allowed) {
+    return { error: `refused ${url} - only this wiki's uploaded files may be opened` };
+  }
+  await app.commands.execute('filebrowser:open-url', { url: parsed.href });
+  return { opened: parsed.href };
+}
+
 async function runCode(app: JupyterFrontEnd, code: string): Promise<any> {
   // Appended to the open notebook and run there, rather than executed straight against
   // a kernel: the user sees what ran and keeps it, and the result is reproducible by
@@ -131,6 +148,12 @@ export const bridge: JupyterFrontEndPlugin<void> = {
           case 'status':
             reply({ result: { open: true, ready: true } });
             break;
+          case 'open_url':
+            // Load a wiki notebook into a sandbox that is already running, instead of
+            // reloading the frame - which would throw away a warm kernel and make the
+            // user wait out the cold start again.
+            reply({ result: await openUrl(app, String(data.url ?? '')) });
+            break;
           case 'create_notebook':
             reply({
               result: await createNotebook(app, String(data.name ?? 'notebook'), data.cells ?? [])
@@ -147,12 +170,19 @@ export const bridge: JupyterFrontEndPlugin<void> = {
       }
     });
 
-    // The opener cannot tell when the lab has finished starting, and a cold start is
-    // tens of seconds. Announcing readiness lets it wait for this instead of polling,
-    // and lets it tell the user "still starting" rather than appearing to hang.
+    // Whoever opened us cannot tell when the lab has finished starting, and a cold
+    // start is tens of seconds. Announcing readiness lets them wait for this instead of
+    // polling, and say "still starting" rather than appearing to hang.
+    //
+    // Both opener and parent: the sandbox is normally an iframe on the wiki page, where
+    // the host is `window.parent`, but it also works in its own tab, where it is
+    // `window.opener`. Checking only one left the other waiting out its full timeout.
     app.restored.then(() => {
-      if (window.opener) {
-        window.opener.postMessage({ type: READY }, window.location.origin);
+      const hosts = [window.opener, window.parent !== window ? window.parent : null];
+      for (const host of hosts) {
+        if (host) {
+          (host as Window).postMessage({ type: READY }, window.location.origin);
+        }
       }
     });
   }
