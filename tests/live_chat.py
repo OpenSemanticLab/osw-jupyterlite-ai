@@ -70,6 +70,15 @@ def fake_token() -> str:
 CALL_PROXY = """
 async ({ baseURL, model, token }) => {
   try {
+    // With a real login the token is the wiki's to issue, exactly as the extension
+    // obtains it - so it is fetched here rather than handed in from the test runner,
+    // and never leaves the browser.
+    if (!token) {
+      const r = await fetch('/w/api.php?action=chatbottoken&format=json',
+                            { credentials: 'same-origin' });
+      token = (await r.json())?.chatbottoken?.token;
+      if (!token) return { status: 0, body: 'the wiki issued no token' };
+    }
     const res = await fetch(baseURL.replace(/\\/$/, '') + '/messages', {
       method: 'POST',
       headers: {
@@ -105,8 +114,18 @@ def main() -> int:
         "token is rejected before the proxy ever forwards, so a 401 proves nothing "
         "about the url.",
     )
+    ap.add_argument("--login-user", help="wiki account to log in as, for a no-stub run")
+    ap.add_argument("--login-password-file", help="file holding that account's password")
     ap.add_argument("--timeout", type=int, default=240)
     args = ap.parse_args()
+
+    # With a login nothing is stubbed: the wiki issues its own token and its own agent
+    # configuration, which is the one seam the stubbed run cannot cover.
+    password = None
+    if args.login_user:
+        if not args.login_password_file:
+            ap.error("--login-user needs --login-password-file")
+        password = open(args.login_password_file).read().strip()
 
     signed = None
     if args.token_file:
@@ -124,6 +143,7 @@ def main() -> int:
         }
     }
     token = signed or fake_token()
+    live = bool(signed)
     token_stub = {"chatbottoken": {"token": token, "expires": time.time() + 600}}
 
     console: list[str] = []
@@ -137,8 +157,9 @@ def main() -> int:
         # Patched in the page rather than intercepted: JupyterLite registers a service
         # worker, which makes context.route unreliable, and this has to be in place
         # before any extension activates.
-        context.add_init_script(
-            f"""
+        if not password:
+            context.add_init_script(
+                f"""
             (() => {{
               const config = {json.dumps(stub)};
               const token = {json.dumps(token_stub)};
@@ -151,12 +172,34 @@ def main() -> int:
                 if (href.includes('action=chatbottoken')) return json(token);
                 return real(input, init);
               }};
-            }})();
-            """
-        )
+                }})();
+                """
+            )
         page = context.new_page()
         page.on("console", lambda m: console.append(f"{m.type}: {m.text}"))
         page.on("pageerror", lambda e: console.append(f"pageerror: {e}"))
+
+        if password:
+            print(f"logging in to {args.wiki} as {args.login_user} ...")
+            page.goto(
+                f"https://{args.wiki}/w/index.php?title=Special:UserLogin&returnto=Main+Page",
+                wait_until="domcontentloaded",
+                timeout=120_000,
+            )
+            page.fill("#wpName1", args.login_user)
+            page.fill("#wpPassword1", password)
+            page.click("#wpLoginAttempt")
+            page.wait_for_load_state("domcontentloaded", timeout=60_000)
+            who = page.evaluate(
+                "async () => (await (await fetch('/w/api.php?action=query&meta=userinfo"
+                "&format=json', {credentials:'same-origin'})).json())"
+                ".query?.userinfo?.name"
+            )
+            print(f"  wiki sees: {who}")
+            if who != args.login_user:
+                print(f"\nFAIL: login did not take (saw {who!r})", file=sys.stderr)
+                browser.close()
+                return 1
 
         url = f"https://{args.wiki}{args.base}lab/index.html"
         print(f"opening {url}")
@@ -208,7 +251,8 @@ def main() -> int:
             {
                 "baseURL": (entry or {}).get("baseURL") or args.proxy,
                 "model": args.model,
-                "token": token,
+                # null in a logged-in run: the page fetches the wiki's real token itself.
+                "token": None if args.login_user else token,
             },
         )
         browser.close()
@@ -220,7 +264,7 @@ def main() -> int:
             "the request never completed - a CORS preflight rejection or a blocked "
             f"origin: {result['body'][:200]}"
         )
-    elif signed:
+    elif signed or args.login_user:
         # With a real token the request goes all the way to the model, so the url has to
         # be right end to end. This is the assertion an unsigned token cannot make.
         if result["status"] == 404:
@@ -252,7 +296,7 @@ def main() -> int:
             print(f"  {failure}", file=sys.stderr)
         return 1
 
-    if signed:
+    if signed or args.login_user:
         print(
             "\nPASS: settings resolved as the agent needs them, and the SDK-shaped "
             "request reached the model through the proxy and came back with a completion."

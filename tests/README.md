@@ -75,8 +75,27 @@ docker run --rm --network host -v "$PWD":/w -v /tmp/livetoken:/tmp/livetoken:ro 
 rm -f /tmp/livetoken
 ```
 
-Without `--token-file` it still runs and still checks the settings and CORS, but it says
-so in its own output rather than claiming more than it verified.
+### A run with nothing stubbed
+
+With `--login-user` the test logs into the wiki first, and then *nothing* is stubbed: the
+wiki issues its own agent configuration and its own token, and the token is fetched by
+the page rather than handed in, exactly as the extension does it.
+
+```bash
+docker run --rm --network host -v "$PWD":/w -v /tmp/sbpw:/tmp/sbpw:ro -w /w \
+    mcr.microsoft.com/playwright/python:v1.49.0-jammy sh -c \
+    "pip install -q 'playwright==1.49.0'; python tests/live_chat.py \
+        --wiki wiki-dev.open-semantic-lab.org \
+        --proxy https://llm.osw-chatbot.demo.open-semantic-lab.org/v1 \
+        --login-user SandboxTestBot --login-password-file /tmp/sbpw"
+```
+
+`SandboxTestBot` is a plain account on the dev wiki, created for this. It holds no
+special rights - it only needs to be *a* logged-in user, since that is the condition the
+stubs were standing in for.
+
+Without `--token-file` or `--login-user` it still runs and still checks the settings and
+CORS, but it says so in its own output rather than claiming more than it verified.
 
 It has been checked against a deliberately broken url - dropping the `/v1` makes it fail
 with exactly the diagnosis above - because a regression test nobody has seen fail is a
