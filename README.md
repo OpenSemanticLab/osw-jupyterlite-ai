@@ -48,3 +48,7 @@ The resolver checks every specifier in the closure against the single version th
 will ship, which the base's walk does not: it resolves a name once, first-come. That
 check is what caught `osw` pinning `datamodel-code-generator==0.51.0` while the base agent
 takes the latest, and `isort` 9 against that release's `isort<8`.
+
+## License
+
+Apache-2.0, matching the OSW packages this builds on. See `LICENSE` and `NOTICE`.
