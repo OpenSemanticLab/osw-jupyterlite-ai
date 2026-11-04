@@ -116,6 +116,14 @@ PINS = (
     # 24.2, and both are compiled or vendored by the distribution, so neither can be
     # upgraded from here. 0.7.1 asks only for pandas>=2.2 and fits.
     "pint-pandas==0.7.1",
+    # Pyodide 0.29.3 ships bokeh 3.6.3 and the distribution copy always wins, so panel
+    # has to be a version that accepts it. Latest panel (1.10) wants bokeh>=3.10 and
+    # additionally drags in panel-material-ui, which wants bokeh>=3.8 - neither is
+    # reachable from here. 1.7.x accepts bokeh>=3.5,<3.8 and still satisfies
+    # panelini>=1.1.1, which asks for panel>=1.7.1; 1.8 moved to bokeh>=3.7.0 and is the
+    # first version that does not fit. Revisit when the pinned Pyodide ships a newer
+    # bokeh, not before.
+    "panel>=1.7.1,<1.8",
 )
 
 #: Declared by osw but unusable in the browser, and excluded rather than vendored.

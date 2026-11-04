@@ -1,6 +1,8 @@
 # Resolved against pyodide 0.29.3. Regenerate with scripts/resolve_wheels.py.
 #
 # Anything the Pyodide distribution already carries is deliberately absent:
+#   bleach 6.2.0
+#   bokeh 3.6.3
 #   cachetools 5.5.2
 #   click 8.3.1
 #   httpx 0.28.1
@@ -22,16 +24,13 @@
 #   rich 13.9.4
 #   tqdm 4.67.1
 #   typing-extensions 4.15.0
-#
-# Excluded, see EXCLUDED in scripts/resolve_wheels.py:
-#   dask
 
 annotated-doc==0.0.5
 argcomplete==3.7.2
 black==26.10.1
 comm==0.2.3
 datamodel-code-generator==0.51.0
-dnspython==2.9.1
+dnspython==2.9.2
 email-validator==2.3.0
 et-xmlfile==2.0.0
 flexcache==0.3
@@ -43,18 +42,27 @@ isort==7.0.0
 jaraco-functools==4.6.0
 jsondiff==2.2.1
 jsonpath-ng==1.15.0
+linkify-it-py==2.2.0
+markdown==3.11.2
+markdown-it-py==4.2.0
+mdit-py-plugins==0.6.1
+mdurl==0.1.2
 mwclient==0.11.0
-mypy-extensions==1.1.0
+mypy-extensions==1.2.0
 oauthlib==4.0.1
 oold==2.3.0
 openpyxl==3.1.5
 opensemantic==0.2.4
-opensemantic-base==0.43.0.post1000004007001
+opensemantic-base==0.43.1.post1000004007001
+opensemantic-batteries==1.5.0.post1000004007000
 opensemantic-characteristics-quantitative==0.8.0.post1000004005000
 opensemantic-core==0.59.0.post1000004007001
 opensemantic-lab==0.8.1.post1000002004003
 opensemantic-quantities==0.4.0.post1000002005000
 osw==2.8.2+pyodide1
+panel==1.7.5
+panelini==1.1.1
+param==2.4.2
 pathspec==1.1.1
 pint==0.26.2
 pint-pandas==0.7.1
@@ -63,6 +71,7 @@ pyld==3.3.0
 pymeta3-wheel==0.5.1
 python-dotenv==1.2.4
 pytokens==0.4.1
+pyviz-comms==3.0.6
 rdflib==7.6.0
 requests-oauthlib==2.0.0
 shellingham==1.5.4
