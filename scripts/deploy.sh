@@ -38,4 +38,18 @@ else
     cp -a "$OUTPUT/." "$DIST/"
 fi
 
+# JupyterLab stamps its build artifacts with a fixed, reproducible mtime of 1985-10-26 and
+# rsync preserves it - 436 of 694 files in a current build carry it. Served without an
+# explicit Cache-Control, a browser falls back to heuristic freshness, conventionally a
+# tenth of the age implied by Last-Modified; from 1985 that is years. lab/index.html would
+# then survive a redeploy, pinning the old bundle.js?_=<hash>, while jupyter-lite.json and
+# the wheel index - which carry real mtimes - refresh within minutes. New config against an
+# old bundle is a worse failure than uniform staleness, and it is invisible to any test
+# that opens a fresh browser profile.
+#
+# Stamping everything with the deploy time makes the heuristic reasonable on any server.
+# The extension also ships an .htaccess setting Cache-Control explicitly, which is better
+# but needs AllowOverride and mod_headers; this works regardless and costs nothing.
+find "$DIST" -exec touch {} +
+
 echo "deployed $(du -sh "$DIST" | cut -f1) to $DIST"
