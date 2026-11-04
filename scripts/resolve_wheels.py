@@ -86,6 +86,17 @@ OSW_SEEDS = (
     # never pulled in by the dependency walk and has to be named. contents/
     # osw_bootstrap.py installs it explicitly for the same reason.
     "email-validator",
+    # The battery cycling dashboard. Nothing in the stack above requires it.
+    "opensemantic-batteries",
+    # What opensemantic.base[view] stands for. Named one by one for the same reason
+    # email-validator is: the dependency walk never sees an extra, so without these the
+    # dashboard resolves its models and then fails on `import panel`. panelini carried a
+    # runtime watchfiles - Rust, no pure wheel - until 1.1.1, which is why the floor is
+    # there: below it nothing in this list resolves at all.
+    "panel",
+    "bokeh",
+    "panelini>=1.1.1",
+    "pint",
 )
 
 #: Resolved before anything else, so a name with several requirers lands on a version
