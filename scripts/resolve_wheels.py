@@ -203,7 +203,16 @@ def resolve(pyodide_version: str, cache: Path, bundled: list[str], capabilities:
                 print(f"no pure-python wheel for {requirement}", file=sys.stderr)
                 raise SystemExit(1) from None
             if not wheels:
-                continue
+                # Dropping it silently is how a package goes missing from the index and
+                # is not noticed until something imports it in a browser, three cells into
+                # someone's notebook. pip exited 0, so this is not the "no pure wheel"
+                # case above - it means the download produced nothing, and continuing
+                # would ship a closure that is quietly incomplete.
+                print(
+                    f"{requirement} (required by {requirer}) resolved to no wheel at all",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
             name, version, requires = wheel_metadata(wheels[0])
             resolved[normalize(name)] = version
             for dep in runtime_requires(requires):

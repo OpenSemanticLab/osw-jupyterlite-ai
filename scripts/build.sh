@@ -102,4 +102,12 @@ if [ "$STRIP_MAPS" = "1" ]; then
     echo "== stripped source maps: ${before} MB -> $(du -sm "$OUTPUT" | cut -f1) MB =="
 fi
 
+# Gate the artifact, not the intent. resolve_wheels.py asks pip for pure wheels only, but
+# the locally built osw wheel and the kernel's bundled wheels never pass through that walk
+# - and a platform specific wheel here fails in the user's browser, not in the build.
+# Runs in the build image because the host python may be older than the f-strings used.
+echo "== checking every wheel is installable under pyodide =="
+docker run --rm -v "$ROOT":/flavour -w /flavour "$IMAGE" \
+    python scripts/check_pyodide_compat.py "${OUTPUT#"$ROOT"/}"
+
 echo "== done: $OUTPUT =="
