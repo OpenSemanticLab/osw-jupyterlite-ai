@@ -26,8 +26,8 @@ Pyodide - ``panel`` is held at 1.7.5 because 1.10 wants a bokeh newer than the
 distribution ships - but nothing stops you choosing otherwise. The tool decides whether
 you can::
 
-    await piplite.install("jsonpath-ng==1.16.0")   # ValueError: no pure Python 3 wheel
-    await micropip.install("jsonpath-ng==1.16.0")  # 1.16.0, from pypi.org
+    await piplite.install("jsonpath-ng==1.15.0")   # ValueError: no pure Python 3 wheel
+    await micropip.install("jsonpath-ng==1.15.0")  # 1.15.0, from pypi.org
 
 ``piplite`` resolves against the site's own index and refuses anything it does not carry,
 even though ``disablePyPIFallback`` is false - that setting governs names missing from the

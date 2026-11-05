@@ -41,7 +41,7 @@ inflect==7.6.0
 isort==7.0.0
 jaraco-functools==4.6.0
 jsondiff==2.2.1
-jsonpath-ng==1.15.0
+jsonpath-ng==1.16.0
 linkify-it-py==2.2.0
 markdown==3.11.2
 markdown-it-py==4.2.0
@@ -54,12 +54,12 @@ oold==2.3.0
 openpyxl==3.1.5
 opensemantic==0.2.4
 opensemantic-base==0.43.1.post1000004007001
-opensemantic-batteries==1.5.0.post1000004007000
+opensemantic-batteries==1.5.0.post1000004007001
 opensemantic-characteristics-quantitative==0.8.0.post1000004005000
 opensemantic-core==0.59.0.post1000004007001
 opensemantic-lab==0.8.1.post1000002004003
 opensemantic-quantities==0.4.0.post1000002005000
-osw==2.8.2+pyodide1
+osw==2.9.0
 panel==1.7.5
 panelini==1.1.1
 param==2.4.2

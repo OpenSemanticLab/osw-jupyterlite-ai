@@ -15,29 +15,12 @@ on:
     tags: ["v*"]
   workflow_dispatch:
     inputs:
-      osw_ref:
-        description: >-
-          Ref of OpenSemanticLab/osw-python to build the osw wheel from. Must contain the
-          dask fix; see OSW_LOCAL_VERSION below.
-        default: main
       tag:
         description: "Release tag to create or update. Defaults to the pushed tag."
         default: ""
 
 permissions:
   contents: write
-
-env:
-  # The osw wheel is built from source rather than taken from PyPI until a release carries
-  # the dask fix: osw imports dask unconditionally, which has no pure-python wheel and so
-  # cannot install under Pyodide at all. Point this at a ref that has it.
-  OSW_REPO: OpenSemanticLab/osw-python
-  OSW_REF: ${{ github.event.inputs.osw_ref || 'main' }}
-  # PEP 440 local segment stamped onto that wheel. It sorts above the plain version, so a
-  # resolver cannot silently prefer the unpatched PyPI copy - which is exactly what
-  # happened before this existed. Set it empty once a release carries the fix, and delete
-  # the local-build step with it.
-  OSW_LOCAL_VERSION: pyodide1
 
 jobs:
   build:
@@ -46,29 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out osw-python
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.OSW_REPO }}
-          ref: ${{ env.OSW_REF }}
-          path: .osw-src
-
-      - name: Fail early if the dask fix is missing
-        # Without this the build succeeds and ships an osw that cannot import in the
-        # browser - a failure that only shows up in someone's first notebook cell. Checking
-        # the marker here costs a second and turns it into a red build.
-        run: |
-          if grep -qE '^import dask' .osw-src/src/osw/utils/util.py; then
-            echo "::error::$OSW_REPO@$OSW_REF still imports dask at module level."
-            echo "::error::osw cannot install under Pyodide with that. Point osw_ref at a"
-            echo "::error::branch carrying the dask fix (feat/pyodide-support)."
-            exit 1
-          fi
-          echo "dask import is not unconditional - ok"
-
       - name: Build the site
-        env:
-          OSW_SRC: ${{ github.workspace }}/.osw-src
         run: scripts/build.sh
 
       - name: Check the built index is the one we meant to ship
@@ -77,10 +38,13 @@ jobs:
         # battery/view stack resolving but not being vendored.
         run: |
           fail=0
-          ls _output/pypi/osw-*+${OSW_LOCAL_VERSION}-*.whl >/dev/null 2>&1 || {
-            echo "::error::no osw wheel carrying +${OSW_LOCAL_VERSION}; the PyPI copy won"
-            fail=1
-          }
+          ls _output/pypi/osw-*.whl >/dev/null 2>&1 || {
+            echo "::error::no osw wheel in the index at all"; fail=1; }
+          # osw <2.9.0 required dask unconditionally and cannot import under Pyodide.
+          v=$(ls _output/pypi/osw-*.whl | sed -E 's/.*\/osw-([^-]+)-.*/\1/')
+          python -c "import sys;from packaging.version import Version;sys.exit(0 if Version('$v')>=Version('2.9.0') else 1)" || {
+            echo "::error::osw $v predates the dask fix (needs >= 2.9.0)"; fail=1; }
+          echo "osw $v"
           for pkg in panel panelini opensemantic_batteries; do
             ls _output/pypi/${pkg}-*.whl >/dev/null 2>&1 || {
               echo "::error::$pkg is not in the site index"; fail=1; }
@@ -120,7 +84,7 @@ jobs:
           # The consumer is a Dockerfile ARG pair, so the checksum belongs in the body
           # where someone can copy it without downloading the asset first.
           notes=$(cat <<EOF
-          Built from \`${{ github.sha }}\` with osw-python \`${OSW_REF}\`.
+          Built from \`${{ github.sha }}\`.
 
           | | |
           | --- | --- |

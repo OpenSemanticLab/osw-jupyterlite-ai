@@ -40,7 +40,7 @@ def ver(name):
 
 # (1a) piplite, a name in the local index at a version it does not carry.
 try:
-    await piplite.install("jsonpath-ng==1.16.0", keep_going=True)
+    await piplite.install("jsonpath-ng==1.15.0", keep_going=True)
     print("PIPLITE_NEWER", ver("jsonpath-ng"))
 except Exception as e:
     print("PIPLITE_NEWER failed:", type(e).__name__, str(e)[:160])
@@ -48,7 +48,7 @@ except Exception as e:
 # (1b) the same through micropip, which talks to PyPI rather than the site index.
 # This is the question that matters: can a user deviate from the pin at all?
 try:
-    await micropip.install("jsonpath-ng==1.16.0")
+    await micropip.install("jsonpath-ng==1.15.0")
     print("MICROPIP_NEWER", ver("jsonpath-ng"))
 except Exception as e:
     print("MICROPIP_NEWER failed:", type(e).__name__, str(e)[:160])
