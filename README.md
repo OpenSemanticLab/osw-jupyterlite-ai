@@ -40,9 +40,14 @@ with `--no-deps`. Regenerate after changing `[agent] capabilities` or bumping os
 
 ```bash
 docker run --rm -v "$PWD":/flavour -w /flavour \
-    -e PIP_FIND_LINKS=/flavour/wheels/local \
+    -e PIP_IGNORE_REQUIRES_PYTHON=1 \
     osw-jupyterlite-build:dev python scripts/resolve_wheels.py > piplite-requirements.txt
 ```
+
+`osw` comes from PyPI like everything else since 2.9.0, which moved `dask` behind a
+`parallel` extra. Before that the build compiled `osw` from a branch and stamped a local
+version onto it, because the released wheel imported `dask` unconditionally and so could
+not install under Pyodide at all.
 
 The resolver checks every specifier in the closure against the single version the site
 will ship, which the base's walk does not: it resolves a name once, first-come. That

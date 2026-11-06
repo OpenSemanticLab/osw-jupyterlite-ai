@@ -1,0 +1,110 @@
+# Build the JupyterLite site and publish it as a release artifact.
+#
+# dist/ is 62 MB of generated assets and is deliberately not in git, so installations that
+# cannot run this build - the MediaWiki image, a wiki on someone else's host - need a
+# tarball to fetch. This produces it, with a checksum, from a tagged commit.
+#
+#   git tag v0.1.0 && git push origin v0.1.0
+#
+# or run it by hand from the Actions tab against any ref.
+
+name: release-dist
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to create or update. Defaults to the pushed tag."
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the site
+        run: scripts/build.sh
+
+      - name: Check the built index is the one we meant to ship
+        # Two regressions have reached a deployed site this way, so both are asserted
+        # rather than assumed: the unpatched osw winning the version tie, and the
+        # battery/view stack resolving but not being vendored.
+        run: |
+          fail=0
+          ls _output/pypi/osw-*.whl >/dev/null 2>&1 || {
+            echo "::error::no osw wheel in the index at all"; fail=1; }
+          # osw <2.9.0 required dask unconditionally and cannot import under Pyodide.
+          v=$(ls _output/pypi/osw-*.whl | sed -E 's/.*\/osw-([^-]+)-.*/\1/')
+          python -c "import sys;from packaging.version import Version;sys.exit(0 if Version('$v')>=Version('2.9.0') else 1)" || {
+            echo "::error::osw $v predates the dask fix (needs >= 2.9.0)"; fail=1; }
+          echo "osw $v"
+          for pkg in panel panelini opensemantic_batteries; do
+            ls _output/pypi/${pkg}-*.whl >/dev/null 2>&1 || {
+              echo "::error::$pkg is not in the site index"; fail=1; }
+          done
+          echo "wheels: $(ls _output/pypi/*.whl | wc -l)"
+          exit $fail
+
+      - name: Package
+        id: package
+        run: |
+          # -m is not available on create, so the mtimes are normalised here instead:
+          # JupyterLab stamps artifacts 1985-10-26, and with no Cache-Control that gives
+          # browsers years of heuristic freshness. Consumers should still extract with
+          # `tar -xzm`; this makes the archive sane either way.
+          find _output -exec touch {} +
+          tar -czf jupyterlite-dist.tar.gz -C _output .
+          sha256sum jupyterlite-dist.tar.gz | tee jupyterlite-dist.tar.gz.sha256
+          {
+            echo "sha256=$(cut -d' ' -f1 < jupyterlite-dist.tar.gz.sha256)"
+            echo "size=$(du -h jupyterlite-dist.tar.gz | cut -f1)"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jupyterlite-dist
+          path: |
+            jupyterlite-dist.tar.gz
+            jupyterlite-dist.tar.gz.sha256
+          retention-days: 14
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag || github.ref_name }}
+        run: |
+          # The consumer is a Dockerfile ARG pair, so the checksum belongs in the body
+          # where someone can copy it without downloading the asset first.
+          notes=$(cat <<EOF
+          Built from \`${{ github.sha }}\`.
+
+          | | |
+          | --- | --- |
+          | size | ${{ steps.package.outputs.size }} |
+          | sha256 | \`${{ steps.package.outputs.sha256 }}\` |
+
+          Install into a MediaWiki JupyterLite extension:
+
+          \`\`\`bash
+          curl -fL -o /tmp/jl.tar.gz <this asset url>
+          echo "${{ steps.package.outputs.sha256 }}  /tmp/jl.tar.gz" | sha256sum -c -
+          mkdir -p dist && tar -xzmf /tmp/jl.tar.gz -C dist
+          \`\`\`
+
+          \`-m\` matters: it restamps mtimes on extraction. JupyterLab's reproducible
+          1985 timestamps otherwise give browsers years of heuristic freshness and a
+          redeploy goes unnoticed.
+          EOF
+          )
+          gh release view "$TAG" >/dev/null 2>&1 \
+            && gh release upload "$TAG" jupyterlite-dist.tar.gz jupyterlite-dist.tar.gz.sha256 --clobber \
+            || gh release create "$TAG" jupyterlite-dist.tar.gz jupyterlite-dist.tar.gz.sha256 \
+                 --title "$TAG" --notes "$notes"

@@ -20,6 +20,25 @@ Usage in a notebook::
 
     import osw_bootstrap
     await osw_bootstrap.setup()
+
+The pinned set is a floor, not a ceiling. It is what the build proved against this
+Pyodide - ``panel`` is held at 1.7.5 because 1.10 wants a bokeh newer than the
+distribution ships - but nothing stops you choosing otherwise. The tool decides whether
+you can::
+
+    await piplite.install("jsonpath-ng==1.15.0")   # ValueError: no pure Python 3 wheel
+    await micropip.install("jsonpath-ng==1.15.0")  # 1.15.0, from pypi.org
+
+``piplite`` resolves against the site's own index and refuses anything it does not carry,
+even though ``disablePyPIFallback`` is false - that setting governs names missing from the
+index, not versions it cannot satisfy. ``micropip`` goes to pypi.org and will override a
+vendored pin or fetch a package the site never heard of. Both verified in the deployed
+kernel by ``tests/pin_override_in_kernel.py``.
+
+So: ``piplite`` for the proven set, which is same-origin, fast and works offline;
+``micropip`` when you mean to deviate. Deviating from a pin is allowed and sometimes
+right, but the pins exist because something broke without them - check why one is there
+before stepping over it.
 """
 
 from __future__ import annotations

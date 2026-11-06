@@ -86,6 +86,17 @@ OSW_SEEDS = (
     # never pulled in by the dependency walk and has to be named. contents/
     # osw_bootstrap.py installs it explicitly for the same reason.
     "email-validator",
+    # The battery cycling dashboard. Nothing in the stack above requires it.
+    "opensemantic-batteries",
+    # What opensemantic.base[view] stands for. Named one by one for the same reason
+    # email-validator is: the dependency walk never sees an extra, so without these the
+    # dashboard resolves its models and then fails on `import panel`. panelini carried a
+    # runtime watchfiles - Rust, no pure wheel - until 1.1.1, which is why the floor is
+    # there: below it nothing in this list resolves at all.
+    "panel",
+    "bokeh",
+    "panelini>=1.1.1",
+    "pint",
 )
 
 #: Resolved before anything else, so a name with several requirers lands on a version
@@ -105,6 +116,14 @@ PINS = (
     # 24.2, and both are compiled or vendored by the distribution, so neither can be
     # upgraded from here. 0.7.1 asks only for pandas>=2.2 and fits.
     "pint-pandas==0.7.1",
+    # Pyodide 0.29.3 ships bokeh 3.6.3 and the distribution copy always wins, so panel
+    # has to be a version that accepts it. Latest panel (1.10) wants bokeh>=3.10 and
+    # additionally drags in panel-material-ui, which wants bokeh>=3.8 - neither is
+    # reachable from here. 1.7.x accepts bokeh>=3.5,<3.8 and still satisfies
+    # panelini>=1.1.1, which asks for panel>=1.7.1; 1.8 moved to bokeh>=3.7.0 and is the
+    # first version that does not fit. Revisit when the pinned Pyodide ships a newer
+    # bokeh, not before.
+    "panel>=1.7.1,<1.8",
 )
 
 #: Declared by osw but unusable in the browser, and excluded rather than vendored.
@@ -184,7 +203,16 @@ def resolve(pyodide_version: str, cache: Path, bundled: list[str], capabilities:
                 print(f"no pure-python wheel for {requirement}", file=sys.stderr)
                 raise SystemExit(1) from None
             if not wheels:
-                continue
+                # Dropping it silently is how a package goes missing from the index and
+                # is not noticed until something imports it in a browser, three cells into
+                # someone's notebook. pip exited 0, so this is not the "no pure wheel"
+                # case above - it means the download produced nothing, and continuing
+                # would ship a closure that is quietly incomplete.
+                print(
+                    f"{requirement} (required by {requirer}) resolved to no wheel at all",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
             name, version, requires = wheel_metadata(wheels[0])
             resolved[normalize(name)] = version
             for dep in runtime_requires(requires):
