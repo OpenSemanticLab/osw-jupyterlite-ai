@@ -134,7 +134,12 @@ const wikiSkills: JupyterFrontEndPlugin<void> = {
   autoStart: true,
   requires: [ISkillRegistry],
   activate: async (app: JupyterFrontEnd, skills: ISkillRegistry) => {
-    await registerWikiSkills(skills);
+    // The wiki may narrow which pages count as skills here without affecting the chat
+    // assistant, which has its own setting. Both default to the same query.
+    const config = await fetchWikiConfig();
+    const raw = config?.settings?.skillDiscoveryQuery;
+    const query = typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+    await registerWikiSkills(skills, query);
 
     app.commands.addCommand(REFRESH_SKILLS_COMMAND, {
       label: 'Reload skills from the wiki',
@@ -142,7 +147,7 @@ const wikiSkills: JupyterFrontEndPlugin<void> = {
         'Re-read Category:Skill from the wiki. Use after writing or editing a skill so ' +
         'it is available without reloading the page.',
       execute: async () => {
-        const count = await registerWikiSkills(skills);
+        const count = await registerWikiSkills(skills, query);
         return { registered: count };
       }
     });
