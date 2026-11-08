@@ -26,6 +26,8 @@
 
 import { JupyterFrontEnd, JupyterFrontEndPlugin } from '@jupyterlab/application';
 
+import { uploadFile } from './wiki';
+
 const REQUEST = 'osw-sandbox-request';
 const REPLY = 'osw-sandbox-reply';
 const READY = 'osw-sandbox-ready';
@@ -102,6 +104,62 @@ async function runLabCommand(
     return { error: `unknown command ${command}` };
   }
   return await app.commands.execute(command, args);
+}
+
+/**
+ * Save the open notebook to the wiki as an uploaded file.
+ *
+ * Done here rather than by shipping the notebook back over the bridge: the sandbox is
+ * same-origin with the wiki and already carries the user's session, so the bytes never
+ * leave the browser and the upload is attributed to them.
+ *
+ * The notebook is saved to the sandbox's own storage first - its cells live in an
+ * in-memory model until something writes them, and uploading before that stores an
+ * empty file that looks like a successful save.
+ */
+async function saveNotebookToWiki(
+  app: JupyterFrontEnd,
+  notebookPath: string,
+  filename: string,
+  comment: string
+): Promise<any> {
+  let path = notebookPath;
+  if (!path) {
+    const info: any = await app.commands
+      .execute('jupyterlab-ai-commands:get-notebook-info', {})
+      .catch(() => null);
+    path = info?.notebookPath;
+  }
+  if (!path) {
+    return { error: 'no notebook is open to save' };
+  }
+
+  await app.commands
+    .execute('jupyterlab-ai-commands:save-notebook', { notebookPath: path })
+    .catch(() => undefined);
+
+  const model = await app.serviceManager.contents.get(path, { content: true });
+  const contents =
+    typeof model.content === 'string'
+      ? model.content
+      : JSON.stringify(model.content, null, 1);
+
+  const name = (filename || path).replace(/[^A-Za-z0-9._-]/g, '_');
+  const target = name.endsWith('.ipynb') ? name : `${name}.ipynb`;
+  const upload = await uploadFile(
+    target,
+    contents,
+    comment || `Notebook saved from the sandbox: ${path}`
+  );
+
+  // The title is what reopens it: ?fromURL= takes a wiki file url, and open_sandbox
+  // takes the File: page title.
+  return {
+    ok: upload?.result === 'Success' || !!upload?.filename,
+    title: upload?.filename ? `File:${upload.filename}` : null,
+    url: upload?.imageinfo?.url ?? null,
+    notebookPath: path
+  };
 }
 
 async function runCode(app: JupyterFrontEnd, code: string): Promise<any> {
@@ -203,6 +261,16 @@ export const bridge: JupyterFrontEndPlugin<void> = {
             break;
           case 'run':
             reply({ result: await runCode(app, String(data.code ?? '')) });
+            break;
+          case 'save_notebook_to_wiki':
+            reply({
+              result: await saveNotebookToWiki(
+                app,
+                String(data.notebookPath ?? ''),
+                String(data.filename ?? ''),
+                String(data.comment ?? '')
+              )
+            });
             break;
           case 'command':
             // The whole jupyterlab-ai-commands surface, so the chat assistant can do

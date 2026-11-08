@@ -28,9 +28,17 @@ from playwright.sync_api import sync_playwright
 BUBBLES = "div.message, .bk-panel-models-chat-ChatMessage"
 
 #: Where the text actually is. Panel renders each bubble into a shadow root, so
-#: inner_text on the container returns nothing while a locator for the paragraph
-#: inside pierces the boundary and reads fine.
-BUBBLE_TEXT = "div.message p, .bk-panel-models-chat-ChatMessage p"
+#: inner_text on the container returns nothing while a locator for the elements inside
+#: pierces the boundary and reads fine.
+#:
+#: `pre` and `code` matter as much as `p`: the assistant puts command output and source
+#: in code blocks, so a paragraph-only selector reads the sentence introducing a result
+#: and silently drops the result itself.
+BUBBLE_TEXT = (
+    "div.message p, div.message pre, div.message code, div.message li,"
+    " .bk-panel-models-chat-ChatMessage p, .bk-panel-models-chat-ChatMessage pre,"
+    " .bk-panel-models-chat-ChatMessage code, .bk-panel-models-chat-ChatMessage li"
+)
 
 
 def log(message: str) -> None:
@@ -146,21 +154,38 @@ def transcript(frame) -> str:
     )
 
 
-def settle(page, frame, timeout: int) -> str:
-    """Wait until the reply stops growing, accepting dialogs as they appear."""
+def settle(page, frame, timeout: int, baseline: int = 0) -> str:
+    """Wait for the assistant to answer, then for the answer to stop growing.
+
+    Stability alone is not enough: the transcript already holds the greeting and the
+    user's own message, so a turn that has not started yet looks exactly like one that
+    has finished. `baseline` is the bubble count before sending, and nothing counts as
+    an answer until the count exceeds it - which matters most for a sandbox turn, where
+    the first forty seconds are a cold kernel and nothing is on screen.
+    """
     deadline = time.monotonic() + timeout
-    last, stable = "", 0
+    bubbles = frame.locator(BUBBLES)
+    last, stable, answered = "", 0, False
+
     while time.monotonic() < deadline:
         accept_confirmations(page)
+        if not answered:
+            answered = bubbles.count() > baseline
+            if not answered:
+                page.wait_for_timeout(1000)
+                continue
         now = transcript(frame)
-        if now == last and len(now) > 0:
+        if now == last and now:
             stable += 1
-            if stable >= 6:
+            if stable >= 8:
                 return now
         else:
             stable = 0
         last = now
         page.wait_for_timeout(1000)
+
+    if not answered:
+        log("the assistant never answered within the timeout")
     return last
 
 
@@ -171,6 +196,11 @@ def main() -> int:
     ap.add_argument("--login-password-file", required=True)
     ap.add_argument("--backend", default="")
     ap.add_argument("--timeout", type=int, default=240)
+    ap.add_argument(
+        "--sandbox", action="store_true",
+        help="drive a sandbox tool instead of a page edit: the result then travels "
+             "tool -> wiki page -> chat iframe -> Bokeh, which the direct bridge tests "
+             "never exercise")
     args = ap.parse_args()
 
     password = open(args.login_password_file).read().strip()
@@ -183,7 +213,8 @@ def main() -> int:
         page = browser.new_context(
             ignore_https_errors=True, viewport={"width": 1500, "height": 1000}
         ).new_page()
-        page.on("console", lambda m: None)
+        console: list[str] = []
+        page.on("console", lambda m: console.append(m.text[:300]))
 
         login(page, args.wiki, args.login_user, password)
         if args.backend:
@@ -195,6 +226,42 @@ def main() -> int:
             timeout=120_000,
         )
         frame = open_chat(page, args.timeout)
+
+        if args.sandbox:
+            baseline = frame.locator(BUBBLES).count()
+            send(
+                page,
+                frame,
+                "Run this in the code sandbox and tell me the output: "
+                f"print('{marker}' * 2). Use the sandbox, not your own arithmetic.",
+                args.timeout,
+            )
+            text = settle(page, frame, args.timeout, baseline)
+            print("\n--- transcript ---")
+            for line in text.splitlines():
+                if line.strip():
+                    print(f"  {line[:200]}")
+            browser.close()
+
+            print("\n--- what the transcript shows ---")
+            bokeh = [c for c in console if "not serializable" in c]
+            log(f"bokeh serialisation errors: {len(bokeh)}")
+            if bokeh:
+                failures.append(
+                    "a tool result reached Bokeh with an undefined in it - the reply "
+                    f"never arrives and the model waits out its timeout: {bokeh[0][:120]}"
+                )
+            if marker * 2 not in text.replace(" ", ""):
+                failures.append(
+                    f"the sandbox output {marker * 2!r} never came back into the chat"
+                )
+            if failures:
+                print("\nFAIL:", file=sys.stderr)
+                for failure in failures:
+                    print(f"  {failure}", file=sys.stderr)
+                return 1
+            print("\nPASS: a sandbox tool ran and its output reached the chat.")
+            return 0
 
         send(
             page,

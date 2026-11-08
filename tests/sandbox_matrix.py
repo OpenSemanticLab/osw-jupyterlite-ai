@@ -246,6 +246,17 @@ def main() -> int:
                 check("the assistant's code is sitting in the popped-out notebook",
                       False, str(reason)[:120])
 
+        print("\n== open_sandbox prefers a window ==")
+        # The complaint this guards: "open the sandbox for me" revealing a panel in the
+        # same page when the user asked for somewhere to work. A blocked popup is a
+        # legitimate outcome, but it has to be reported as a panel, not as a tab.
+        opened_where = page.evaluate(
+            "() => ({ popped: mw.osw.sandbox.isPoppedOut(),"
+            " visible: mw.osw.sandbox.isVisible() })")
+        check("the sandbox is in its own window, not a panel in the page",
+              bool(opened_where.get("popped")) and not opened_where.get("visible"),
+              str(opened_where))
+
         print("\n== re-discovery after the page reloads ==")
         open_wiki_page(page, args.wiki)
         page.wait_for_timeout(3000)
