@@ -26,8 +26,8 @@ import { apiGet, apiPost, scriptPath } from './wiki';
 
 /**
  * How skills are found. A skill is an ordinary wiki page carrying the "AI Skill"
- * keyword - not an instance of some category of its own, which is what this used to
- * assume and which no wiki ever had installed.
+ * keyword, so a Tutorial, an LLM-Skill or a plain Article can all be one without being
+ * moved.
  *
  * The chat assistant has its own setting with the same default, so a deployment can
  * narrow one surface without disturbing the other. Both defaults are the same string on

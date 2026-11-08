@@ -1,13 +1,9 @@
 # Wiki content
 
-Nothing here any more, and that is the point.
+This flavour defines no wiki content. Skills are ordinary wiki pages, built from
+vocabulary the wiki already has.
 
 ## Skills are ordinary wiki pages
-
-This directory used to define `Category:Skill`
-(`Category:OSWc4358938e1f54d8da084c028dfb8c22f`), a category invented for this flavour and
-installed on no wiki - so discovery matched nothing, everywhere. The wiki already had the
-pieces:
 
 | | |
 | --- | --- |

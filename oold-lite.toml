@@ -23,13 +23,12 @@ lite_config = "site/jupyter-lite.json"
 capabilities = ["tabular", "rdf"]
 framing = "brief/framing.md"
 closing = "brief/closing.md"
-# No `skills` key on purpose. This flavour ships no bundled skills - the agent discovers
-# them on the wiki at runtime, through the labextension - and the directory it used to
-# name held no tracked files. git does not track empty directories, so a fresh checkout
-# had no such path and Site.build() died on shutil.copytree with FileNotFoundError. It
-# built here only because the empty directory happened to exist on disk. build() guards
-# with `if self.skills is not None`, so omitting the key is the supported way to say
-# "none". Re-add it together with actual content, never ahead of it.
+# No `skills` key on purpose: this flavour ships no bundled skills - the agent discovers
+# them on the wiki at runtime, through the labextension. build() guards with
+# `if self.skills is not None`, so omitting the key is the supported way to say "none".
+# Naming a directory with no tracked files would not work: git does not track empty
+# directories, so a fresh checkout has no such path and shutil.copytree raises. Add the
+# key together with actual content, never ahead of it.
 
 [wheels]
 # Fully resolved; Site._build_wheels downloads it with --no-deps. Regenerate with

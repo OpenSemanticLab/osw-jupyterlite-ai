@@ -120,16 +120,10 @@ export async function applyWikiDefaults(
     ...(config.parameters ? { parameters: config.parameters } : {})
   };
 
-  // This entry belongs to the wiki, and is re-asserted on every start rather than
-  // written once.
-  //
-  // It used to be written once and then left alone, guarded by a version marker in
-  // localStorage, on the reasoning that a user may have edited it and their choice
-  // should win. That was wrong twice over: a browser that had taken an earlier version
-  // kept a stale baseURL and a stale token and simply stopped working, and the only way
-  // out was for the user to find and clear a setting they never set. Changing the model
-  // on the wiki has to reach people who have already used the sandbox - they are exactly
-  // the people who will notice.
+  // This entry belongs to the wiki and is re-asserted on every start, not written once.
+  // It carries a token that expires and a baseURL the wiki may change, so a copy left
+  // alone in a browser goes stale and the sandbox stops working - with no setting the
+  // user knowingly set for them to clear.
   //
   // What a user *does* keep: providers they added themselves, and their choice of
   // default. Only this one entry is owned here.
