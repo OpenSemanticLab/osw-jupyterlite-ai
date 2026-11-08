@@ -194,8 +194,20 @@ def main() -> int:
               "refused" in value, value[:160])
 
         print("\n== pop-out ==")
+        # A marker, so the check is "the user sees the code the assistant wrote" rather
+        # than "some notebook is open" - a restored blank one would pass the latter.
+        marker = f"popout_marker_{int(time.time())}"
+        made_marker = sandbox_call(
+            page,
+            "() => mw.osw.sandbox.request('create_notebook', { name: 'popout-check',"
+            " cells: [{ type: 'code', source: " + json.dumps(f"print('{marker}')") + " }] })")
+        # Asserted, not assumed: if this quietly failed the pop-out would open whatever
+        # happened to be active and the next check would blame the pop-out for it.
+        check("the marker notebook was created",
+              bool((made_marker.get("value") or {}).get("notebookPath")),
+              json.dumps(made_marker.get("value"))[:140])
         before_pages = len(context.pages)
-        page.evaluate("() => mw.osw.sandbox.popOut()")
+        sandbox_call(page, "() => mw.osw.sandbox.popOut()")
         page.wait_for_timeout(4000)
         popped = page.evaluate(
             "() => ({ poppedOut: mw.osw.sandbox.isPoppedOut(),"
@@ -208,11 +220,31 @@ def main() -> int:
             lab = context.pages[-1]
             lab.wait_for_load_state("domcontentloaded", timeout=60_000)
             check("the popped-out window is the lab", "lab/index.html" in lab.url, lab.url)
+            # Not asserted on the url: JupyterLite consumes ?path= to open the file and
+            # then normalises the address bar, so the query is gone by the time it can be
+            # read. What the user sees is the notebook, so that is what is checked.
             try:
                 lab.wait_for_selector(".jp-Notebook", timeout=args.timeout * 1000)
-                check("code is sitting in a notebook there", True)
+                lab.wait_for_timeout(4000)
+                opened = lab.evaluate(
+                    "() => [...document.querySelectorAll('.lm-TabBar-tabLabel')]"
+                    ".map(e => e.textContent).filter(Boolean)")
+                print(f"    notebooks open in the pop-out: {opened}")
+                cells = lab.evaluate(
+                    "() => [...document.querySelectorAll('.jp-Notebook .jp-Cell')]"
+                    ".map(c => c.innerText || '').join('\\n')")
+                # Deliberately not asserting *which* notebook is focused. ?path= is
+                # honoured by a lab with no saved workspace, and ignored by one that has
+                # restored its previous tabs - which is the normal case once the hidden
+                # sandbox has been used. What is guaranteed, and what the user needs, is
+                # that the pop-out shows the sandbox with the assistant's notebooks and
+                # their code in it.
+                check("the pop-out shows notebooks with the assistant's code",
+                      bool(opened) and "print" in cells,
+                      f"open: {opened}")
             except Exception as reason:  # noqa: BLE001
-                check("code is sitting in a notebook there", False, str(reason)[:120])
+                check("the assistant's code is sitting in the popped-out notebook",
+                      False, str(reason)[:120])
 
         print("\n== re-discovery after the page reloads ==")
         open_wiki_page(page, args.wiki)
