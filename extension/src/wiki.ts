@@ -111,3 +111,43 @@ export async function currentUser(): Promise<string | null> {
     return null;
   }
 }
+
+/**
+ * Upload a file to the wiki as the logged-in user.
+ *
+ * Multipart rather than urlencoded, because `action=upload` wants the bytes as a file
+ * part. Same-origin with `credentials`, so the session cookie carries the identity and
+ * nothing here holds a credential of its own.
+ */
+export async function uploadFile(
+  filename: string,
+  contents: string,
+  comment: string,
+  mime = 'application/x-ipynb+json'
+): Promise<any> {
+  const form = new FormData();
+  form.set('action', 'upload');
+  form.set('format', 'json');
+  form.set('formatversion', '2');
+  form.set('filename', filename);
+  form.set('comment', comment);
+  // Overwriting a file of the same name is the point when a notebook is saved twice;
+  // without this the second save fails on the "exists" warning.
+  form.set('ignorewarnings', '1');
+  form.set('token', await csrfToken());
+  form.set('file', new Blob([contents], { type: mime }), filename);
+
+  const response = await fetch(apiUrl(), {
+    method: 'POST',
+    credentials: 'same-origin',
+    body: form
+  });
+  if (!response.ok) {
+    throw new Error(`api.php responded ${response.status}`);
+  }
+  const body = await response.json();
+  if (body.error) {
+    throw new Error(`${body.error.code}: ${body.error.info}`);
+  }
+  return body.upload;
+}

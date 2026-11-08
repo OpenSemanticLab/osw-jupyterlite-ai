@@ -80,17 +80,59 @@ async function openUrl(app: JupyterFrontEnd, url: string): Promise<any> {
   return { opened: parsed.href };
 }
 
+/**
+ * Commands the host may invoke. Everything jupyterlab-ai-commands exposes, and nothing
+ * else: `app.commands` also holds `filebrowser:open-url`, which would load an arbitrary
+ * url into the lab and walk straight around the `?fromURL=` allowlist that exists to stop
+ * exactly that. A prefix test is the whole guard, so it is written once, here.
+ */
+const COMMAND_PREFIX = 'jupyterlab-ai-commands:';
+
+async function runLabCommand(
+  app: JupyterFrontEnd,
+  command: string,
+  args: any
+): Promise<any> {
+  if (!command.startsWith(COMMAND_PREFIX)) {
+    return {
+      error: `refused: only ${COMMAND_PREFIX}* commands may be called from the host`
+    };
+  }
+  if (!app.commands.hasCommand(command)) {
+    return { error: `unknown command ${command}` };
+  }
+  return await app.commands.execute(command, args);
+}
+
 async function runCode(app: JupyterFrontEnd, code: string): Promise<any> {
   // Appended to the open notebook and run there, rather than executed straight against
   // a kernel: the user sees what ran and keeps it, and the result is reproducible by
   // pressing Shift+Enter rather than only by asking the assistant again.
-  const info: any = await app.commands.execute(
-    'jupyterlab-ai-commands:get-notebook-info',
-    {}
-  );
-  const notebookPath = info?.notebookPath;
+  // get-notebook-info throws when nothing is open rather than returning an empty path,
+  // so the absence has to be caught, not tested for.
+  const openNotebook = async (): Promise<string | undefined> => {
+    try {
+      const info: any = await app.commands.execute(
+        'jupyterlab-ai-commands:get-notebook-info',
+        {}
+      );
+      return info?.notebookPath;
+    } catch {
+      return undefined;
+    }
+  };
+
+  let notebookPath = await openNotebook();
   if (!notebookPath) {
-    return { error: 'no notebook is open in the sandbox' };
+    // A hidden sandbox starts with nothing open, so the first run has nowhere to go.
+    // Making one here keeps "code always lands in a notebook" true without requiring
+    // the caller to know the order - and it is what makes the pop-out worth offering,
+    // since there is always something to show.
+    await createNotebook(app, 'sandbox', []);
+    notebookPath = await openNotebook();
+  }
+  if (!notebookPath) {
+    return { error: 'no notebook is open in the sandbox and one could not be created' };
   }
   await app.commands.execute('jupyterlab-ai-commands:add-cell', {
     notebookPath,
@@ -161,6 +203,17 @@ export const bridge: JupyterFrontEndPlugin<void> = {
             break;
           case 'run':
             reply({ result: await runCode(app, String(data.code ?? '')) });
+            break;
+          case 'command':
+            // The whole jupyterlab-ai-commands surface, so the chat assistant can do
+            // what the in-lab agent can: kernels, cells, notebooks.
+            reply({
+              result: await runLabCommand(
+                app,
+                String(data.command ?? ''),
+                data.args ?? {}
+              )
+            });
             break;
           default:
             reply({ error: `unknown action ${data.action}` });
