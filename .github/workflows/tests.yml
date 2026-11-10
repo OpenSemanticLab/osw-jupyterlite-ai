@@ -1,0 +1,61 @@
+#
+# Type check and unit tests for the labextension, on every push and pull request.
+#
+# `release-dist.yml` builds the distribution on a tag; nothing ran the tests. The
+# extension carries the rules that decide what reaches the wiki - what a file may be
+# called, which half of a save is written first - and those were asserted only by hand.
+#
+name: Tests
+
+on:
+  push:
+    branches: ["main", "feat-*", "rebase-*"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  extension:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # `mwjson.util` is loaded from the wiki at runtime rather than reimplemented here,
+      # and the tests compare against that real file: the values it produces end up in
+      # jsondata, where the wiki compares them with what its own editor writes. Checked
+      # out at a pinned ref so an upstream change cannot fail this build by itself, and
+      # so the comparison is against a known version rather than whatever is current.
+      - name: Check out MwJson
+        uses: actions/checkout@v4
+        with:
+          repository: OpenSemanticLab/mediawiki-extensions-MwJson
+          # Quoted, and the full sha: unquoted `0908510` is a YAML *number*, so the
+          # leading zero was dropped and checkout fetched refs/heads/908510*.
+          ref: "090851076ed0dd92224387715efc38a11ff686d1"
+          path: .ci/MwJson
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Matches the build image (docker/Dockerfile), so a build that passes here
+          # passes there.
+          node-version: "20.20.2"
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+
+      # `npm ci` not `npm install`: the lockfile is the version contract, and install
+      # would quietly resolve the carets in package.json to something newer.
+      - name: Install
+        working-directory: extension
+        run: npm ci
+
+      - name: Type check
+        working-directory: extension
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests
+        working-directory: extension
+        env:
+          MWJSON_UTIL: ${{ github.workspace }}/.ci/MwJson/modules/ext.MwJson.util/MwJson_util.js
+        run: npm run test:unit

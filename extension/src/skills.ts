@@ -1,5 +1,5 @@
 /**
- * Make `Category:Skill` pages available to the agent as skills.
+ * Make the wiki's skill pages available to the agent as skills.
  *
  * Jupyternaut's skills are normally folders of `SKILL.md` on the contents drive, which in
  * a static site means they are fixed at build time. Instances of `Category:Skill` are
@@ -24,8 +24,25 @@ import { ISkillRegistry } from '@jupyternaut/agent';
 
 import { apiGet, apiPost, scriptPath } from './wiki';
 
-/** `Category:Skill`. A subclass of Tutorial, so querying Tutorial would be wrong. */
-export const SKILL_CATEGORY = 'Category:OSWc4358938e1f54d8da084c028dfb8c22f';
+/**
+ * How skills are found. A skill is an ordinary wiki page carrying the "AI Skill"
+ * keyword, so a Tutorial, an LLM-Skill or a plain Article can all be one without being
+ * moved.
+ *
+ * The chat assistant has its own setting with the same default, so a deployment can
+ * narrow one surface without disturbing the other. Both defaults are the same string on
+ * purpose; change them together.
+ */
+export const AI_SKILL_KEYWORD = 'Item:OSW1dd1c2ee927343ca9097a45a0af21678';
+
+export const DEFAULT_SKILL_QUERY = `[[HasKeyword::${AI_SKILL_KEYWORD}]]`;
+
+/** "OpenSemanticLab for developers", itself part of the OpenSemanticLab Manual. */
+export const DEVELOPERS_ARTICLE = 'Item:OSWe0cbdc9c1e0e4a53b21bd83e6c6d99ad';
+
+/** Category a skill page is an instance of. Broad: the keyword is the discriminator. */
+export const DEFAULT_SKILL_CATEGORY =
+  'Category:OSW92cc6b1a2e6b4bb7bad470dfdcfdaf26';
 
 /** Which assistant we are, matched against a skill's `applies_to`. */
 export const AUDIENCE = 'jupyternaut';
@@ -51,16 +68,20 @@ function textOf(value: unknown): string {
   return '';
 }
 
-/** Every page in `Category:Skill`, with the fields needed for the index. */
-export async function listSkills(): Promise<ISkillPage[]> {
+/** Every page the discovery query matches, with the fields needed for the index. */
+export async function listSkills(
+  query: string = DEFAULT_SKILL_QUERY
+): Promise<ISkillPage[]> {
+  // An SMW ask, not a category listing: membership of a category is not what makes a
+  // page a skill - the keyword is, and a keyword can be put on a Tutorial, an LLM-Skill
+  // or a plain Article without moving it.
   const listing = await apiGet({
-    action: 'query',
-    list: 'categorymembers',
-    cmtitle: SKILL_CATEGORY,
-    cmlimit: 500,
-    cmtype: 'page'
+    action: 'ask',
+    query: `${query}|limit=500`
   });
-  const members: { title: string }[] = listing?.query?.categorymembers ?? [];
+  const members: { title: string }[] = Object.keys(
+    listing?.query?.results ?? {}
+  ).map(title => ({ title }));
   if (members.length === 0) {
     return [];
   }
@@ -128,7 +149,11 @@ export async function saveSkill(options: {
 }): Promise<string> {
   const title = options.title ?? `Item:OSW${crypto.randomUUID().replace(/-/g, '')}`;
   const jsondata = {
-    type: [SKILL_CATEGORY],
+    type: [DEFAULT_SKILL_CATEGORY],
+    // Without the keyword the page is a plain Article and the discovery query - which
+    // matches on the keyword, not the category - would never return what we just wrote.
+    keywords: [AI_SKILL_KEYWORD],
+    part_of: [DEVELOPERS_ARTICLE],
     skill_name: options.name,
     label: [{ text: options.name, lang: 'en' }],
     description: [{ text: options.description, lang: 'en' }]
@@ -155,10 +180,17 @@ export async function saveSkill(options: {
 }
 
 /** Register every wiki skill with the agent. Never throws: a broken wiki must not stop the app. */
-export async function registerWikiSkills(registry: ISkillRegistry): Promise<number> {
+export async function registerWikiSkills(
+  registry: ISkillRegistry,
+  query?: string
+): Promise<number> {
   let skills: ISkillPage[];
   try {
-    skills = await listSkills();
+    // Skills found here are *added* to whatever Jupyternaut already holds - the registry
+    // is never cleared. The chat assistant replaces its bundled set instead; the sandbox
+    // extends, because its built-ins are about using notebooks rather than about this
+    // wiki's conventions and both are worth having.
+    skills = await listSkills(query ?? DEFAULT_SKILL_QUERY);
   } catch (reason) {
     console.info('osw-jupyternaut: no wiki skills available', reason);
     return 0;

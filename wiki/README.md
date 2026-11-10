@@ -1,61 +1,30 @@
 # Wiki content
 
-Definitions that have to exist **on** the wiki, not in the site build.
+This flavour defines no wiki content. Skills are ordinary wiki pages, built from
+vocabulary the wiki already has.
 
-## `Category:Skill`
+## Skills are ordinary wiki pages
 
-`Category:OSWc4358938e1f54d8da084c028dfb8c22f`, a subclass of `Category:Tutorial`
-(`Category:OSW494f660e6a714a1a9681c517bbb975da`). It makes an assistant skill an ordinary
-wiki entity: authored in the editor, versioned, discussed, and subject to the same rights
-as anything else.
-
-Subclassing Tutorial is not decoration. A skill *is* an instruction in written form, which
-is what Tutorial means here (`instance_rdf_type: schema:HowTo`), and it inherits
-Tutorial's `required_predecessor` / `recommended_successor` properties - a sensible way to
-say "read that skill first". The consequence to remember when querying: the dev wiki has
-50 Tutorials that are **not** Skills, so `discover_skills` has to ask for the subclass,
-never for Tutorial.
-
-### Shape
-
-| where | what |
+| | |
 | --- | --- |
-| `main` slot (page body) | the instructions - the markdown an assistant reads |
-| `jsondata.skill_name` | the slug the assistant calls it by, e.g. `osl-page-editing` |
-| `jsondata.label` / `description` | name and one-line summary, from the base entity schema |
-| `jsondata.applies_to` | `osw-chatbot`, `jupyternaut`, or empty for both |
-| `jsondata.resources` | files the instructions refer to |
+| `Category:Article` `OSW92cc6b1a2e6b4bb7bad470dfdcfdaf26` | what a skill page is an instance of. Deliberately broad - `Tutorial` and `LLM-Skill` both sit under it. |
+| `Item:OSW1dd1c2ee927343ca9097a45a0af21678` | the **AI Skill** keyword. Attached with `Property:HasKeyword`, which the wiki already used. |
+| `Item:OSWe0cbdc9c1e0e4a53b21bd83e6c6d99ad` | "OpenSemanticLab for developers", referenced by `part_of`, itself part of the OpenSemanticLab Manual. |
 
-The body holds the instructions rather than a JSON property, so the mapping to the
-`SKILL.md` format both assistants already speak is close to identity - frontmatter from
-`jsondata`, body from the page - and so that editing a skill produces a readable diff
-instead of one very long changed line.
+**The keyword is what makes a page a skill**, not the category. That is why discovery is an
+SMW ask over `[[HasKeyword::…]]` rather than a category listing: a keyword can be put on a
+Tutorial, an LLM-Skill or a plain Article without moving the page.
 
-`label` and `description` are the entity's own, inherited from the base schema; only the
-slug, the audience and the resource list are new. `description` is what every assistant
-sees for every skill on every turn, so keep it to one line that says *when* to reach for
-it.
+`Property:HasRequiredPredecessor` chains prerequisites, and real content already uses it -
+*OSW Python Package* requires *JSON-SCHEMA Tutorial*.
 
-### Installing it
+## Installing the vocabulary
 
-Needs an account with rights to create a Category, so it is not done by the build. The
-sandbox is the easiest place to run it, because there it runs as you with no credentials
-to configure:
+A wiki needs the `world.opensemantic.base` and `world.opensemantic.meta.docs` page
+packages for any of the above to exist. Without them `save_skill` refuses rather than
+writing a page typed against a category this wiki does not have, and the defaults that
+name missing pages are dropped instead of written as dangling references.
 
-```python
-import osw_bootstrap
-await osw_bootstrap.setup()
-wtsite = osw_bootstrap.wtsite()
-
-import json, requests
-base = "https://raw.githubusercontent.com/OpenSemanticLab/osw-jupyterlite-ai/main/wiki/Category_Skill"
-page = wtsite.get_page(
-    wtsite.GetPageParam(titles=["Category:OSWc4358938e1f54d8da084c028dfb8c22f"])
-).pages[0]
-for slot in ("jsondata", "jsonschema"):
-    page.set_slot_content(slot, requests.get(f"{base}/slot_{slot}.json").json())
-page.edit("Create Category:Skill")
-```
-
-Verify afterwards that the category page renders a form - if the `allOf` `$ref` to Tutorial
-cannot be resolved, the editor shows a bare object rather than an error.
+Both `DEFAULT_SKILL_QUERY` in `extension/src/skills.ts` and `SKILL_DISCOVERY_QUERY` in
+osw-chatbot's `config.py` default to the same query. A deployment can narrow either on its
+own; they are separate settings so the sandbox and the chat assistant can differ.

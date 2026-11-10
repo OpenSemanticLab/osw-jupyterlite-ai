@@ -5,7 +5,7 @@ import {
 import { ISettingRegistry } from '@jupyterlab/settingregistry';
 import { ISkillRegistry } from '@jupyternaut/agent';
 
-import { bridge } from './bridge';
+import { bridge, saveNotebookToWiki } from './bridge';
 import { sanitizeLocation } from './from-url';
 import {
   SETTINGS_MODEL,
@@ -17,6 +17,8 @@ import { listSkills, registerWikiSkills, saveSkill } from './skills';
 import { currentUser } from './wiki';
 
 export const SAVE_SKILL_COMMAND = 'osw-jupyternaut:save-skill';
+
+export const SAVE_NOTEBOOK_COMMAND = 'osw-jupyternaut:save-notebook-to-wiki';
 export const DESCRIBE_COMMAND = 'osw-jupyternaut:describe';
 export const REFRESH_SKILLS_COMMAND = 'osw-jupyternaut:refresh-skills';
 
@@ -134,7 +136,12 @@ const wikiSkills: JupyterFrontEndPlugin<void> = {
   autoStart: true,
   requires: [ISkillRegistry],
   activate: async (app: JupyterFrontEnd, skills: ISkillRegistry) => {
-    await registerWikiSkills(skills);
+    // The wiki may narrow which pages count as skills here without affecting the chat
+    // assistant, which has its own setting. Both default to the same query.
+    const config = await fetchWikiConfig();
+    const raw = config?.settings?.skillDiscoveryQuery;
+    const query = typeof raw === "string" && raw.trim() ? raw.trim() : undefined;
+    await registerWikiSkills(skills, query);
 
     app.commands.addCommand(REFRESH_SKILLS_COMMAND, {
       label: 'Reload skills from the wiki',
@@ -142,7 +149,7 @@ const wikiSkills: JupyterFrontEndPlugin<void> = {
         'Re-read Category:Skill from the wiki. Use after writing or editing a skill so ' +
         'it is available without reloading the page.',
       execute: async () => {
-        const count = await registerWikiSkills(skills);
+        const count = await registerWikiSkills(skills, query);
         return { registered: count };
       }
     });
@@ -185,6 +192,25 @@ const wikiSkills: JupyterFrontEndPlugin<void> = {
           return { error: String(reason) };
         }
       }
+    });
+
+    // A command, not an IToolRegistry tool, for the same reason as the skill writers:
+    // Jupyternaut reaches commands through discover_commands/execute_command, so this
+    // one registration serves the in-lab agent, and the host bridge calls the same
+    // function for the chat assistant.
+    app.commands.addCommand(SAVE_NOTEBOOK_COMMAND, {
+      label: 'Save this notebook to the wiki',
+      caption:
+        'Upload the open notebook as a WikiFile so it outlives this browser. The ' +
+        'sandbox keeps notebooks in browser storage, which does not survive clearing ' +
+        'site data. Pass a readable label; the page itself is named by OSW-ID.',
+      execute: async (commandArgs: any) =>
+        saveNotebookToWiki(
+          app,
+          String(commandArgs?.notebookPath ?? ''),
+          String(commandArgs?.label ?? ''),
+          String(commandArgs?.comment ?? '')
+        )
     });
 
     app.commands.addCommand('osw-jupyternaut:list-skills', {

@@ -41,10 +41,15 @@ STUB_CONFIG = {
 
 SKILL_TITLE = "Item:OSWstubskill0000000000000000000"
 
-# One member of Category:Skill, and the two slots the registration reads. Stubbed because
-# the category does not exist on every wiki yet, and because osw-dev denies anonymous API
-# reads - an unstubbed anonymous run could only ever observe the plugin giving up.
-STUB_MEMBERS = {"query": {"categorymembers": [{"title": SKILL_TITLE}]}}
+# One result of the skill query, and the two slots the registration reads.
+#
+# Discovery is an SMW `action=ask` over the AI Skill keyword, not a category listing:
+# membership of a category is not what makes a page a skill. The shape mirrors what the
+# API returns - `query.results` keyed by title, not a list.
+#
+# Stubbed because osw-dev denies anonymous API reads, so an unstubbed anonymous run could
+# only ever observe the plugin giving up.
+STUB_MEMBERS = {"query": {"results": {SKILL_TITLE: {"fulltext": SKILL_TITLE}}}}
 STUB_REVISIONS = {
     "query": {
         "pages": [
@@ -106,7 +111,7 @@ def main() -> int:
               window.fetch = async (input, init) => {{
                 const href = typeof input === 'string' ? input : (input.url ?? String(input));
                 if (href.includes('action=jupyterliteconfig')) return json(config);
-                if (href.includes('list=categorymembers')) return json(members);
+                if (href.includes('action=ask')) return json(members);
                 if (href.includes('prop=revisions')) return json(revisions);
                 return real(input, init);
               }};
@@ -176,7 +181,9 @@ def main() -> int:
         )
 
     if not any("registered 1 wiki skill" in m for m in ours):
-        failures.append("the stubbed Category:Skill page was not registered as a skill")
+        failures.append(
+                "the skill from the stubbed keyword query was not registered"
+            )
 
     missing = [name for name, present in commands.items() if not present]
     if missing:

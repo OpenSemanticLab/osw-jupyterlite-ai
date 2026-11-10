@@ -176,7 +176,13 @@ def main() -> int:
                     transcript = "(could not read the chat frame)"
         browser.close()
 
-    print(f"\n--- sandbox panel visible: {shown} ---")
+    # Either surface counts. `open_sandbox` asks for a window first and only falls back
+    # to the in-page panel when the browser blocks the popup, so requiring the panel
+    # would fail precisely when the preferred path worked.
+    in_window = any("JupyterLite" in url or "lab/index.html" in url for url in opened)
+    shown = shown or in_window
+    print(f"\n--- sandbox visible: {shown} "
+          f"({'window' if in_window else 'panel' if shown else 'nowhere'}) ---")
     if opened:
         print(f"  (windows opened: {[u[:60] for u in opened]})")
     print("\n--- end of the chat ---")
@@ -185,7 +191,8 @@ def main() -> int:
 
     if not shown:
         failures.append(
-            "the sandbox panel never became visible - the assistant did not reach "
+            "the sandbox never became visible, in a window or a panel - the "
+            "assistant did not reach "
             "open_sandbox, or the browser side refused it"
         )
 
