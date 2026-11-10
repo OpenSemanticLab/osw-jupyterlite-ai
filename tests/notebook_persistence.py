@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import uuid
@@ -24,6 +25,9 @@ import uuid
 from playwright.sync_api import sync_playwright
 
 RESULTS: list[tuple[str, bool, str]] = []
+
+#: Every uploaded file is an instance of this.
+WIKIFILE_CATEGORY = "Category:OSW11a53cdfbdc24524bf8ac435cbf65d9d"
 
 
 def check(name: str, ok: bool, detail: str = "") -> bool:
@@ -69,7 +73,13 @@ def main() -> int:
     password = open(args.login_password_file).read().strip()
 
     marker = uuid.uuid4().hex[:8]
-    filename = f"persistence_test_{marker}.ipynb"
+    # A label, not a filename. The caller does not get to name a wiki file - the name is
+    # minted from an OSW-ID and the readable part lives in jsondata.label.
+    label = f"Persistence test {marker}"
+    #: What a wiki file must be called. Asserted rather than assumed: this test used to
+    #: pass its own `persistence_test_<hex>.ipynb` through, which is how an upload under a
+    #: clear name went unnoticed until one turned up on the wiki.
+    osw_filename = re.compile(r"^File:OSW[0-9a-f]{32}\.ipynb$")
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -93,10 +103,12 @@ def main() -> int:
         ready = call(page, "() => mw.osw.sandbox.whenReady()")
         check("the sandbox started", bool(ready.get("value")), str(ready)[:120])
 
+        # Driven through the named sandbox API rather than the raw request(), because
+        # that is the surface a wiki page without the chatbot would use.
         made = call(
             page,
-            "() => mw.osw.sandbox.request('create_notebook', { name: 'persistence',"
-            " cells: [{ type: 'code', source: " + json.dumps(f"print('{marker}')") + " }] })",
+            "() => mw.osw.sandbox.createNotebook('persistence',"
+            " [{ type: 'code', source: " + json.dumps(f"print('{marker}')") + " }])",
         )
         check("a notebook was written", bool((made.get("value") or {}).get("notebookPath")),
               json.dumps(made.get("value"))[:140])
@@ -104,12 +116,17 @@ def main() -> int:
         print("\n== upload it to the wiki ==")
         saved = call(
             page,
-            "() => mw.osw.sandbox.request('save_notebook_to_wiki', { filename: "
-            + json.dumps(filename) + ", comment: 'persistence test' })",
+            "() => mw.osw.sandbox.saveNotebookToWiki(" + json.dumps(label)
+            + ", 'persistence test')",
         )
         value = saved.get("value") or {}
         title = value.get("title")
         check("the upload reported a file page", bool(title), json.dumps(value)[:200])
+        check(
+            "the file is named by OSW-ID, not by the label",
+            bool(title and osw_filename.match(title)),
+            str(title),
+        )
 
         print("\n== the wiki really has it ==")
         if title:
@@ -131,6 +148,36 @@ def main() -> int:
             # an in-memory model until something saves them.
             check("the uploaded notebook is not empty", (info.get("size") or 0) > 100,
                   f"{info.get('size')} bytes")
+
+            # A file page with no jsondata is not a WikiFile: no query finds it and it
+            # renders its OSW-ID instead of the label. The upload reporting success says
+            # nothing about whether the entity was written, so it is read back.
+            jsondata = page.evaluate(
+                """async (title) => {
+                    const r = await fetch(mw.config.get('wgScriptPath') +
+                        '/index.php?title=' + encodeURIComponent(title) +
+                        '&action=raw&slot=jsondata');
+                    return r.ok ? await r.text() : '';
+                }""",
+                title,
+            )
+            parsed = {}
+            try:
+                parsed = json.loads(jsondata or "{}")
+            except ValueError:
+                pass
+            check("the file page carries jsondata", bool(parsed), (jsondata or "empty")[:120])
+            check(
+                "it is an instance of Category:WikiFile",
+                WIKIFILE_CATEGORY in (parsed.get("type") or []),
+                str(parsed.get("type")),
+            )
+            check(
+                "the label is in jsondata, where Display_title_of reads it",
+                any(marker in (entry or {}).get("text", "")
+                    for entry in (parsed.get("label") or [])),
+                str(parsed.get("label"))[:120],
+            )
 
             print("\n== reopen it in a fresh sandbox through ?fromURL= ==")
             file_url = info.get("url")
@@ -158,7 +205,7 @@ def main() -> int:
     for name, ok, _ in RESULTS:
         print(f"  {'ok  ' if ok else 'FAIL'}  {name}")
     print(f"\n  {len(RESULTS) - len(failed)}/{len(RESULTS)} checks passed")
-    print(f"  the uploaded file is {filename} - the test account cannot delete it")
+    print("  the uploaded file is left behind - the test account cannot delete it")
     return 1 if failed else 0
 
 

@@ -7,15 +7,20 @@ a browser against a live wiki.
 
 Run them from a Playwright image pinned to the browsers it ships:
 
+Build the image once - `tests/Dockerfile` pins both halves, because the python package
+and the browsers in the base image have to match or you get a confusing "Executable
+doesn't exist":
+
 ```bash
-docker run --rm --network host -v "$PWD":/w -w /w \
-    mcr.microsoft.com/playwright/python:v1.49.0-jammy \
-    sh -c "pip install -q 'playwright==1.49.0'; python tests/<name>.py --wiki <host>"
+docker build -t osw-pw:dev tests/
 ```
 
-The `playwright==1.49.0` pin matters: installing the latest pulls a version expecting
-browser builds the image does not have, and it fails with a confusing "Executable doesn't
-exist".
+Then:
+
+```bash
+docker run --rm --network host -v "$PWD":/w -w /w osw-pw:dev \
+    python tests/<name>.py --wiki <host>
+```
 
 | | |
 | --- | --- |
@@ -66,11 +71,10 @@ docker exec osw-llm-proxy sh -c 'cd /app && uv run --no-sync python /tmp/mint.py
 docker cp osw-llm-proxy:/tmp/t /tmp/livetoken
 
 docker run --rm --network host -v "$PWD":/w -v /tmp/livetoken:/tmp/livetoken:ro -w /w \
-    mcr.microsoft.com/playwright/python:v1.49.0-jammy sh -c \
-    "pip install -q 'playwright==1.49.0'; python tests/live_chat.py \
+    osw-pw:dev python tests/live_chat.py \
         --wiki wiki-dev.open-semantic-lab.org \
         --proxy https://llm.osw-chatbot.demo.open-semantic-lab.org/v1 \
-        --token-file /tmp/livetoken"
+        --token-file /tmp/livetoken
 
 rm -f /tmp/livetoken
 ```
@@ -83,8 +87,7 @@ the page rather than handed in, exactly as the extension does it.
 
 ```bash
 docker run --rm --network host -v "$PWD":/w -v /tmp/sbpw:/tmp/sbpw:ro -w /w \
-    mcr.microsoft.com/playwright/python:v1.49.0-jammy sh -c \
-    "pip install -q 'playwright==1.49.0'; python tests/live_chat.py \
+    osw-pw:dev sh -c "python tests/live_chat.py \
         --wiki wiki-dev.open-semantic-lab.org \
         --proxy https://llm.osw-chatbot.demo.open-semantic-lab.org/v1 \
         --login-user SandboxTestBot --login-password-file /tmp/sbpw"

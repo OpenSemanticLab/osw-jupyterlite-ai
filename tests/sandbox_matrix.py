@@ -101,9 +101,24 @@ def main() -> int:
         state = page.evaluate(
             "() => ({ enabled: mw.osw.sandbox.isEnabled(),"
             " base: mw.osw.sandbox.basePath(),"
-            " open: mw.osw.sandbox.isOpen() })"
+            " open: mw.osw.sandbox.isOpen(),"
+            " hasToggle: typeof mw.osw.sandbox.toggle === 'function' })"
         )
         check("sandbox client is present and enabled", bool(state["enabled"]), str(state))
+        # It ships with the JupyterLite extension now, so it must be here on a wiki that
+        # has no chatbot at all.
+        check("the client exposes toggle()", bool(state.get("hasToggle")), str(state))
+        check("the toolbox offers a panel toggle",
+              page.locator("#t-jupyterlite-panel").count() > 0,
+              "no #t-jupyterlite-panel portlet link")
+
+        print("\n== the toggle shows and hides ==")
+        shown = call_toggle = page.evaluate("() => mw.osw.sandbox.toggle()")
+        check("toggle() reveals the panel", bool(shown) and page.evaluate(
+            "() => mw.osw.sandbox.isVisible()"), str(shown))
+        hidden = page.evaluate("() => mw.osw.sandbox.toggle()")
+        check("toggle() hides it again", hidden is False and not page.evaluate(
+            "() => mw.osw.sandbox.isVisible()"), str(hidden))
 
         print("\n== hidden sandbox, cold start ==")
         page.evaluate("() => mw.osw.sandbox.ensure()")
