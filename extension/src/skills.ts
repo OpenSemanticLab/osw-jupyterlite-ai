@@ -1,5 +1,5 @@
 /**
- * Make `Category:Skill` pages available to the agent as skills.
+ * Make the wiki's skill pages available to the agent as skills.
  *
  * Jupyternaut's skills are normally folders of `SKILL.md` on the contents drive, which in
  * a static site means they are fixed at build time. Instances of `Category:Skill` are

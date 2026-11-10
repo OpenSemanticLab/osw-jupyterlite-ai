@@ -5,7 +5,7 @@ import {
 import { ISettingRegistry } from '@jupyterlab/settingregistry';
 import { ISkillRegistry } from '@jupyternaut/agent';
 
-import { bridge } from './bridge';
+import { bridge, saveNotebookToWiki } from './bridge';
 import { sanitizeLocation } from './from-url';
 import {
   SETTINGS_MODEL,
@@ -17,6 +17,8 @@ import { listSkills, registerWikiSkills, saveSkill } from './skills';
 import { currentUser } from './wiki';
 
 export const SAVE_SKILL_COMMAND = 'osw-jupyternaut:save-skill';
+
+export const SAVE_NOTEBOOK_COMMAND = 'osw-jupyternaut:save-notebook-to-wiki';
 export const DESCRIBE_COMMAND = 'osw-jupyternaut:describe';
 export const REFRESH_SKILLS_COMMAND = 'osw-jupyternaut:refresh-skills';
 
@@ -190,6 +192,25 @@ const wikiSkills: JupyterFrontEndPlugin<void> = {
           return { error: String(reason) };
         }
       }
+    });
+
+    // A command, not an IToolRegistry tool, for the same reason as the skill writers:
+    // Jupyternaut reaches commands through discover_commands/execute_command, so this
+    // one registration serves the in-lab agent, and the host bridge calls the same
+    // function for the chat assistant.
+    app.commands.addCommand(SAVE_NOTEBOOK_COMMAND, {
+      label: 'Save this notebook to the wiki',
+      caption:
+        'Upload the open notebook as a WikiFile so it outlives this browser. The ' +
+        'sandbox keeps notebooks in browser storage, which does not survive clearing ' +
+        'site data. Pass a readable label; the page itself is named by OSW-ID.',
+      execute: async (commandArgs: any) =>
+        saveNotebookToWiki(
+          app,
+          String(commandArgs?.notebookPath ?? ''),
+          String(commandArgs?.label ?? ''),
+          String(commandArgs?.comment ?? '')
+        )
     });
 
     app.commands.addCommand('osw-jupyternaut:list-skills', {
