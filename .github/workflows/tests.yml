@@ -30,7 +30,9 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: OpenSemanticLab/mediawiki-extensions-MwJson
-          ref: 0908510
+          # Quoted, and the full sha: unquoted `0908510` is a YAML *number*, so the
+          # leading zero was dropped and checkout fetched refs/heads/908510*.
+          ref: "090851076ed0dd92224387715efc38a11ff686d1"
           path: .ci/MwJson
 
       - name: Set up Node
