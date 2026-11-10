@@ -22,7 +22,7 @@ RUN apt-get update \
 # 0.8.x and a Python 3.14 kernel that osw cannot run in. Read docker/constraints.txt
 # before relaxing anything here.
 COPY docker/constraints.txt /tmp/constraints.txt
-ARG OOLD_LITE_REF=main
+ARG OOLD_LITE_REF=6ba1e60cd10efd027f171f07657e9a5eda88b3b1
 RUN pip install --no-cache-dir -c /tmp/constraints.txt \
     "oold-jupyterlite-ai[build] @ git+https://github.com/OO-LD/oold-jupyterlite-ai@${OOLD_LITE_REF}"
 
